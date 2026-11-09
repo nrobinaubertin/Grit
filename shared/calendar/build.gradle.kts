@@ -67,7 +67,10 @@ kotlin {
             implementation(libs.compose.ui.tooling.preview)
 
             implementation(libs.jetbrains.navigation3.ui)
-            implementation(libs.calendar)
+            // Back gesture for the editor layer; same version as Compose Multiplatform
+            implementation(
+                "org.jetbrains.compose.ui:ui-backhandler:${libs.versions.compose.multiplatform.get()}"
+            )
 
             implementation(libs.kotlinx.datetime)
             implementation(libs.kotlinx.serialization.json)
@@ -107,6 +110,10 @@ dependencies {
 }
 
 room3 { schemaDirectory("$projectDir/schemas") }
+
+composeCompiler {
+    stabilityConfigurationFiles.add(layout.projectDirectory.file("compose-stability.conf"))
+}
 
 tasks.named<Test>("jvmTest") {
     // Integration tests against a real Radicale server run only when RADICALE_URL is set

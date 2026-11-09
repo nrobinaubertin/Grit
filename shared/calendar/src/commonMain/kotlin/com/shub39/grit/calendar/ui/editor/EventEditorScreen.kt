@@ -48,7 +48,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
@@ -66,6 +65,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.shub39.grit.calendar.data.CategoryColors
 import com.shub39.grit.calendar.ui.Formatting
+import com.shub39.grit.calendar.ui.LightTopBar
 import com.shub39.grit.calendar.ui.account.CategoryDialog
 import com.shub39.grit.shared.ui.components.GritTimePicker
 import grit.shared.calendar.generated.resources.*
@@ -83,7 +83,7 @@ private val REMINDER_PRESETS = listOf(0, 5, 10, 15, 30, 60, 120, 1440)
 private val ValueShape = RoundedCornerShape(8.dp)
 
 /** Number of steps in which the form is built, one per frame. */
-private const val STAGES = 4
+private const val STAGES = 5
 
 @Composable
 fun EventEditorScreen(
@@ -113,15 +113,12 @@ fun EventEditorScreen(
 
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(modifier = Modifier.fillMaxSize().imePadding()) {
-            TopAppBar(
-                title = {
-                    Text(
-                        stringResource(
-                            if (state.isNew) Res.string.new_event else Res.string.edit_event
-                        )
-                    )
-                },
-                navigationIcon = {
+            LightTopBar(
+                title =
+                    stringResource(
+                        if (state.isNew) Res.string.new_event else Res.string.edit_event
+                    ),
+                navigation = {
                     IconButton(onClick = onClose) {
                         Icon(
                             vectorResource(Res.drawable.close),
@@ -153,15 +150,16 @@ fun EventEditorScreen(
             ) {
                 state.error?.let { ErrorText(it) }
 
-                OutlinedTextField(
-                    value = state.title,
-                    onValueChange = { value -> viewModel.update { it.copy(title = value) } },
-                    label = { Text(stringResource(Res.string.title)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                if (stage >= 2)
+                    OutlinedTextField(
+                        value = state.title,
+                        onValueChange = { value -> viewModel.update { it.copy(title = value) } },
+                        label = { Text(stringResource(Res.string.title)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
 
-                if (stage >= 2) {
+                if (stage >= 3) {
                     CalendarRow(state) { id -> viewModel.update { it.copy(calendarId = id) } }
                     CategoryRow(
                         state = state,
@@ -202,7 +200,7 @@ fun EventEditorScreen(
                     }
                 }
 
-                if (stage >= 3) {
+                if (stage >= 4) {
                     HorizontalDivider()
                     RepeatRow(state) { choice -> viewModel.update { it.copy(repeat = choice) } }
                     if (viewModel.changesSeries(state)) {
@@ -226,7 +224,7 @@ fun EventEditorScreen(
                     HorizontalDivider()
                 }
 
-                if (stage >= 4) {
+                if (stage >= 5) {
                     OutlinedTextField(
                         value = state.location,
                         onValueChange = { value -> viewModel.update { it.copy(location = value) } },

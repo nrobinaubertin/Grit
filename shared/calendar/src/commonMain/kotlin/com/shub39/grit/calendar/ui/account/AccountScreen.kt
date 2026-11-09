@@ -50,7 +50,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -67,6 +66,7 @@ import com.shub39.grit.calendar.data.CategoryColors
 import com.shub39.grit.calendar.data.db.CategoryEntity
 import com.shub39.grit.calendar.data.db.CollectionEntity
 import com.shub39.grit.calendar.ui.Formatting
+import com.shub39.grit.calendar.ui.LightTopBar
 import grit.shared.calendar.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.resources.vectorResource
@@ -85,9 +85,9 @@ fun AccountScreen(state: AccountState, viewModel: AccountViewModel, onBack: () -
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(modifier = Modifier.fillMaxSize().imePadding()) {
-            TopAppBar(
-                title = { Text(stringResource(Res.string.accounts)) },
-                navigationIcon = {
+            LightTopBar(
+                title = stringResource(Res.string.accounts),
+                navigation = {
                     FilledTonalIconButton(
                         onClick = onBack,
                         modifier = Modifier.padding(start = 8.dp),

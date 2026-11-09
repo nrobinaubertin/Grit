@@ -48,17 +48,14 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MediumFloatingActionButton
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -69,11 +66,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layoutId
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.shub39.grit.calendar.ui.Formatting
+import com.shub39.grit.calendar.ui.LightSelector
+import com.shub39.grit.calendar.ui.LightTopBar
 import com.shub39.grit.shared.ui.components.GritBottomSheet
 import grit.shared.calendar.generated.resources.*
 import java.time.ZoneId
@@ -189,18 +187,33 @@ private fun CalendarContent(
     onAction: (CalendarAction) -> Unit,
     onCreateEvent: (LocalDate, Int?) -> Unit,
 ) {
-    var all by remember { mutableStateOf(false) }
+    // The active view first; the two others one at a time, a few frames apart
+    var built by remember { mutableIntStateOf(1) }
     LaunchedEffect(Unit) {
-        repeat(3) { withFrameNanos {} }
-        all = true
+        while (built < CalendarMode.entries.size) {
+            repeat(3) { withFrameNanos {} }
+            built++
+        }
     }
     val mode = state.mode
+    val order = remember { listOf(mode) + CalendarMode.entries.filter { it != mode } }
+    fun shown(view: CalendarMode) = view == mode || order.indexOf(view) < built
     Layout(
         content = {
-            if (all || mode == CalendarMode.Month) {
-                Box(Modifier.layoutId(CalendarMode.Month)) { MonthView(state, onAction) }
+            if (shown(CalendarMode.Month)) {
+                Box(Modifier.layoutId(CalendarMode.Month)) {
+                    MonthView(
+                        month = state.month,
+                        selectedDate = state.selectedDate,
+                        today = state.today,
+                        firstDayOfWeek = state.firstDayOfWeek,
+                        monthData = state.monthData,
+                        is24Hr = state.is24Hr,
+                        onAction = onAction,
+                    )
+                }
             }
-            if (all || mode == CalendarMode.Week) {
+            if (shown(CalendarMode.Week)) {
                 Box(Modifier.layoutId(CalendarMode.Week)) {
                     WeekPager(
                         week = state.week,
@@ -217,8 +230,10 @@ private fun CalendarContent(
                     )
                 }
             }
-            if (all || mode == CalendarMode.Agenda) {
-                Box(Modifier.layoutId(CalendarMode.Agenda)) { AgendaView(state, onAction) }
+            if (shown(CalendarMode.Agenda)) {
+                Box(Modifier.layoutId(CalendarMode.Agenda)) {
+                    AgendaView(state.agenda, state.today, state.is24Hr, onAction)
+                }
             }
         },
         modifier = Modifier.fillMaxSize(),
@@ -237,19 +252,14 @@ private fun CalendarTopBar(
     onFilter: () -> Unit,
 ) {
     Column {
-        TopAppBar(
-            title = {
-                Text(
-                    text =
-                        when (state.mode) {
-                            CalendarMode.Month -> Formatting.month(state.month)
-                            CalendarMode.Week ->
-                                Formatting.month(YearMonth(state.week.year, state.week.month))
-                            CalendarMode.Agenda -> stringResource(Res.string.agenda)
-                        },
-                    fontWeight = FontWeight.Bold,
-                )
-            },
+        LightTopBar(
+            title =
+                when (state.mode) {
+                    CalendarMode.Month -> Formatting.month(state.month)
+                    CalendarMode.Week ->
+                        Formatting.month(YearMonth(state.week.year, state.week.month))
+                    CalendarMode.Agenda -> stringResource(Res.string.agenda)
+                },
             actions = {
                 TextButton(onClick = { onAction(CalendarAction.Today) }) {
                     Text(stringResource(Res.string.today))
@@ -271,28 +281,21 @@ private fun CalendarTopBar(
             },
         )
         if (state.hasCalendars) {
-            SingleChoiceSegmentedButtonRow(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
-            ) {
-                val modes = CalendarMode.entries
-                modes.forEachIndexed { index, mode ->
-                    SegmentedButton(
-                        selected = state.mode == mode,
-                        onClick = { onAction(CalendarAction.SetMode(mode)) },
-                        shape = SegmentedButtonDefaults.itemShape(index, modes.size),
-                    ) {
-                        Text(
-                            stringResource(
-                                when (mode) {
-                                    CalendarMode.Month -> Res.string.month
-                                    CalendarMode.Week -> Res.string.week
-                                    CalendarMode.Agenda -> Res.string.agenda
-                                }
-                            )
-                        )
-                    }
-                }
-            }
+            LightSelector(
+                options = CalendarMode.entries,
+                selected = state.mode,
+                label = { mode ->
+                    stringResource(
+                        when (mode) {
+                            CalendarMode.Month -> Res.string.month
+                            CalendarMode.Week -> Res.string.week
+                            CalendarMode.Agenda -> Res.string.agenda
+                        }
+                    )
+                },
+                onSelect = { onAction(CalendarAction.SetMode(it)) },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+            )
             val status =
                 when {
                     state.syncError != null ->
@@ -350,24 +353,36 @@ private fun EmptyPrompt(onCreateLocal: () -> Unit, onConnect: () -> Unit) {
     }
 }
 
+/**
+ * Each view gets only the fields it shows, so that a change elsewhere in the state (the mode, the
+ * sync status) does not rebuild it.
+ */
 @Composable
-private fun MonthView(state: CalendarUiState, onAction: (CalendarAction) -> Unit) {
-    val selectedEvents = state.eventsByDay[state.selectedDate].orEmpty()
+private fun MonthView(
+    month: YearMonth,
+    selectedDate: LocalDate,
+    today: LocalDate,
+    firstDayOfWeek: kotlinx.datetime.DayOfWeek,
+    monthData: MonthData,
+    is24Hr: Boolean,
+    onAction: (CalendarAction) -> Unit,
+) {
+    val selectedEvents = monthData.byDay[selectedDate].orEmpty()
     LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 120.dp)) {
         item(key = "grid") {
             MonthPager(
-                month = state.month,
-                selectedDate = state.selectedDate,
-                today = state.today,
-                firstDayOfWeek = state.firstDayOfWeek,
-                weeks = state.monthData.weeks,
+                month = month,
+                selectedDate = selectedDate,
+                today = today,
+                firstDayOfWeek = firstDayOfWeek,
+                weeks = monthData.weeks,
                 onMonthChange = { onAction(CalendarAction.ShowMonth(it)) },
                 onSelect = { onAction(CalendarAction.SelectDate(it)) },
             )
         }
         item(key = "title") {
             Text(
-                text = Formatting.dayTitle(state.selectedDate),
+                text = Formatting.dayTitle(selectedDate),
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 8.dp),
             )
@@ -376,27 +391,28 @@ private fun MonthView(state: CalendarUiState, onAction: (CalendarAction) -> Unit
             item(key = "empty") { EmptyDay() }
         } else {
             items(selectedEvents, key = { it.instanceId }) { event ->
-                EventRow(
-                    event,
-                    state.is24Hr,
-                    onClick = { onAction(CalendarAction.OpenEvent(event)) },
-                )
+                EventRow(event, is24Hr, onClick = { onAction(CalendarAction.OpenEvent(event)) })
             }
         }
     }
 }
 
 @Composable
-private fun AgendaView(state: CalendarUiState, onAction: (CalendarAction) -> Unit) {
+private fun AgendaView(
+    agenda: List<Pair<LocalDate, List<DayEvent>>>,
+    today: LocalDate,
+    is24Hr: Boolean,
+    onAction: (CalendarAction) -> Unit,
+) {
     LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 120.dp)) {
-        if (state.agenda.isEmpty()) item { EmptyDay() }
-        for ((date, events) in state.agenda) {
+        if (agenda.isEmpty()) item { EmptyDay() }
+        for ((date, events) in agenda) {
             item(key = "day-$date") {
                 Text(
                     text = Formatting.dayTitle(date),
                     style = MaterialTheme.typography.titleSmall,
                     color =
-                        if (date == state.today) MaterialTheme.colorScheme.primary
+                        if (date == today) MaterialTheme.colorScheme.primary
                         else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier =
                         Modifier.fillMaxWidth()
@@ -405,11 +421,7 @@ private fun AgendaView(state: CalendarUiState, onAction: (CalendarAction) -> Uni
                 )
             }
             items(events, key = { "$date-${it.instanceId}" }) { event ->
-                EventRow(
-                    event,
-                    state.is24Hr,
-                    onClick = { onAction(CalendarAction.OpenEvent(event)) },
-                )
+                EventRow(event, is24Hr, onClick = { onAction(CalendarAction.OpenEvent(event)) })
             }
         }
         item {

@@ -33,10 +33,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.CornerRadius
@@ -122,9 +125,16 @@ internal fun WeekPager(
             }
         }
 
+    // The previous and next pages are built a few frames after the first one
+    var neighbours by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        repeat(2) { withFrameNanos {} }
+        neighbours = 1
+    }
+
     HorizontalPager(
         state = pagerState,
-        beyondViewportPageCount = 1,
+        beyondViewportPageCount = neighbours,
         key = { it },
         modifier = modifier,
     ) { page ->

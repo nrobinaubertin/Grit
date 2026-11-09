@@ -20,8 +20,9 @@ import com.shub39.grit.shared.ui.navigation.CalendarRoute
 import kotlinx.datetime.LocalDate
 
 /**
- * Creates an event ([eventId] null, on [date]) or edits event [eventId]. [session] makes every
- * opening a new route, because Grit keeps ViewModels for the whole activity.
+ * Creates an event ([eventId] null, on [date]) or edits event [eventId]. The editor opens as a
+ * layer above the calendar, not as a navigation entry, so that the calendar stays built below it.
+ * [session] makes every opening distinct.
  */
 data class EventEditor(
     val eventId: Long? = null,
@@ -29,7 +30,7 @@ data class EventEditor(
     /** Start hour for a new event, when created from the week view. */
     val hour: Int? = null,
     val session: Long = System.nanoTime(),
-) : CalendarRoute
+)
 
 /** Account and calendar settings. */
 data object CalendarAccount : CalendarRoute
