@@ -1,0 +1,72 @@
+# Calendar tab (fork feature)
+
+This fork of Grit adds a Calendar tab that syncs with a CalDAV server, for example Radicale. Two people can share calendars without another sync app such as DAVx5.
+
+## What it does
+
+- It shows a month grid with the events of the selected day, and an agenda list.
+- It creates, edits and deletes events on calendars that you can write to. A repeating event is edited as a whole series. One occurrence can be deleted on its own.
+- It shows read-only calendars without edit actions. If the server does not give the `DAV:write-content` privilege, the calendar is read-only.
+- It shows reminders as Android notifications. The Grit setting that pauses notifications also pauses calendar reminders.
+- It syncs at these times: every 30 minutes, 5 seconds after a local change, at the opening of the tab, and on pull-to-refresh.
+
+The desktop app syncs while it runs and has no reminders, like the upstream desktop app.
+
+## Modules
+
+| Module | Content |
+|---|---|
+| `:shared:caldav` | Plain JVM module. CalDAV client (dav4jvm over Ktor), iCalendar layer (ical4j), and the generic sync engine. |
+| `:shared:calendar` | Kotlin Multiplatform module (Android and desktop). Room database, sync and reminder scheduling, screens. |
+
+The sync engine works through the `LocalCollection` interface. A later task-list sync (VTODO) can use the same engine with its own `LocalCollection`.
+
+Library versions are in `gradle/calendar.versions.toml`, so that `gradle/libs.versions.toml` stays as upstream has it.
+
+## Changes to upstream files
+
+The fork keeps edits to upstream files small, so that upstream changes merge easily:
+
+- `settings.gradle.kts`: module includes, the second version catalog, and JitPack for dav4jvm only.
+- `androidApp/build.gradle.kts` and `desktopApp/build.gradle.kts`: one dependency line each.
+- Both `GritModules.kt` files: `CalendarModules` in the Koin `includes`.
+- `shared/ui/.../navigation/`: the new file `ExtensionRoutes.kt`, plus a few lines in `NavigationConfig.kt`, `NavBarAndRail.kt` and `GritNavDisplay.kt`.
+
+The calendar module adds its screens through `NavEntryContributor`, which Koin provides to `GritNavDisplay`. Its Android manifest adds the INTERNET permission, the receivers and a network security configuration. The manifest merger adds these to both app flavors.
+
+## Data and privacy
+
+- On Android, the calendar database is in `noBackupFilesDir`. Calendars are downloaded again after a restore.
+- The account password is encrypted with an Android Keystore key. On desktop, it is in a file that only the user can read.
+- Every event keeps its full iCalendar text. Edits change only the fields that Grit shows, so other clients lose no data.
+
+## Tests
+
+Run the unit tests:
+
+```sh
+./gradlew :shared:caldav:test :shared:calendar:jvmTest
+```
+
+Run the integration tests against the development server in `server/radicale`:
+
+```sh
+server/radicale/run-dev.sh
+RADICALE_URL=http://127.0.0.1:5232 ./gradlew :shared:caldav:test :shared:calendar:jvmTest
+```
+
+Render the screens to PNG files:
+
+```sh
+GRIT_SCREENSHOTS=/tmp/grit-shots ./gradlew :shared:calendar:jvmTest --tests '*ScreenshotTest*'
+```
+
+`:shared:caldav:animalsnifferMain` makes sure that the CalDAV module only calls Java APIs that exist on Android API 29.
+
+## Known limits
+
+- One account in the user interface. The database supports more.
+- No new calendars from Grit. Create them on the server, for example in the Radicale web interface.
+- A single occurrence of a repeating event cannot be edited, only deleted.
+- No week or day view with hours.
+- No invitations or attendees.
