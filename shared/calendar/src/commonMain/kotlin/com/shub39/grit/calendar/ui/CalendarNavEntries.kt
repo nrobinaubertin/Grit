@@ -17,19 +17,26 @@
 package com.shub39.grit.calendar.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme.colorScheme
-import androidx.compose.material3.Text
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation3.runtime.EntryProviderScope
-import com.shub39.grit.caldav.Ical
+import com.shub39.grit.calendar.ui.account.AccountScreen
+import com.shub39.grit.calendar.ui.account.AccountViewModel
+import com.shub39.grit.calendar.ui.editor.EventEditorScreen
+import com.shub39.grit.calendar.ui.editor.EventEditorViewModel
+import com.shub39.grit.calendar.ui.home.CalendarHomeScreen
+import com.shub39.grit.calendar.ui.home.CalendarViewModel
 import com.shub39.grit.shared.ui.navigation.CalendarHome
 import com.shub39.grit.shared.ui.navigation.NavEntryContributor
 import com.shub39.grit.shared.ui.navigation.Routes
 import com.shub39.grit.shared.ui.navigation.TopLevelBackStack
 import com.shub39.grit.shared.ui.navigation.fadeTransitionMetadata
+import com.shub39.grit.shared.ui.navigation.horizontalTransitionMetadata
+import com.shub39.grit.shared.ui.navigation.verticalTransitionMetadata
+import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.annotation.Single
 
 /** Adds the calendar screens to the app navigation. */
@@ -37,12 +44,33 @@ import org.koin.core.annotation.Single
 class CalendarNavEntries : NavEntryContributor {
     override fun EntryProviderScope<Routes>.entries(backStack: TopLevelBackStack) {
         entry<CalendarHome>(metadata = fadeTransitionMetadata()) {
-            Box(
-                modifier = Modifier.fillMaxSize().background(colorScheme.background),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(text = "Calendar (ical4j ${Ical.libraryCheck()})")
-            }
+            val viewModel = koinViewModel<CalendarViewModel>()
+            val state by viewModel.state.collectAsStateWithLifecycle()
+            CalendarHomeScreen(
+                state = state,
+                onAction = viewModel::onAction,
+                onOpenAccount = { backStack.backStack.add(CalendarAccount) },
+                onCreateEvent = { date -> backStack.backStack.add(EventEditor(date = date)) },
+                onEditEvent = { id -> backStack.backStack.add(EventEditor(eventId = id)) },
+            )
+        }
+
+        entry<EventEditor>(metadata = verticalTransitionMetadata()) { route ->
+            val viewModel = koinViewModel<EventEditorViewModel>(key = route.toString())
+            LaunchedEffect(route) { viewModel.load(route.eventId, route.date) }
+            val state by viewModel.state.collectAsStateWithLifecycle()
+            EventEditorScreen(
+                state = state,
+                viewModel = viewModel,
+                onClose = { backStack.removeLast() },
+                modifier = Modifier.background(colorScheme.background),
+            )
+        }
+
+        entry<CalendarAccount>(metadata = horizontalTransitionMetadata()) {
+            val viewModel = koinViewModel<AccountViewModel>()
+            val state by viewModel.state.collectAsStateWithLifecycle()
+            AccountScreen(state = state, viewModel = viewModel, onBack = { backStack.removeLast() })
         }
     }
 }

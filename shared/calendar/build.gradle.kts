@@ -92,6 +92,11 @@ kotlin {
             implementation(kotlin("test"))
             implementation(libs.androidx.sqlite.bundled)
             implementation(calendarLibs.coroutines.test)
+            // Off-screen rendering of the screens (ScreenshotTest)
+            implementation(
+                "org.jetbrains.compose.ui:ui-test:${libs.versions.compose.multiplatform.get()}"
+            )
+            implementation(compose.desktop.currentOs)
         }
     }
 }
@@ -106,6 +111,8 @@ room3 { schemaDirectory("$projectDir/schemas") }
 tasks.named<Test>("jvmTest") {
     // Integration tests against a real Radicale server run only when RADICALE_URL is set
     System.getenv("RADICALE_URL")?.let { environment("RADICALE_URL", it) }
+    // Screens are rendered to PNG files only when GRIT_SCREENSHOTS names a folder
+    System.getenv("GRIT_SCREENSHOTS")?.let { environment("GRIT_SCREENSHOTS", it) }
 }
 
 // Same header override as in :shared:caldav
