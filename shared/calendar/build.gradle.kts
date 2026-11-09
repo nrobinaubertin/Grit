@@ -91,6 +91,7 @@ kotlin {
         jvmTest.dependencies {
             implementation(kotlin("test"))
             implementation(libs.androidx.sqlite.bundled)
+            implementation(calendarLibs.coroutines.test)
         }
     }
 }
@@ -101,6 +102,11 @@ dependencies {
 }
 
 room3 { schemaDirectory("$projectDir/schemas") }
+
+tasks.named<Test>("jvmTest") {
+    // Integration tests against a real Radicale server run only when RADICALE_URL is set
+    System.getenv("RADICALE_URL")?.let { environment("RADICALE_URL", it) }
+}
 
 // Same header override as in :shared:caldav
 configure<SpotlessExtension> {

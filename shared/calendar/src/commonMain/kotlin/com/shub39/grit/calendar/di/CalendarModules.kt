@@ -16,8 +16,18 @@
  */
 package com.shub39.grit.calendar.di
 
+import com.shub39.grit.calendar.data.db.CalendarDatabase
+import com.shub39.grit.calendar.data.db.CalendarDbFactory
+import kotlinx.coroutines.Dispatchers
 import org.koin.core.annotation.ComponentScan
 import org.koin.core.annotation.Module
+import org.koin.core.annotation.Single
 
 /** Koin module of the calendar feature. The apps add it to their root module `includes`. */
-@Module @ComponentScan("com.shub39.grit.calendar") class CalendarModules
+@Module
+@ComponentScan("com.shub39.grit.calendar")
+class CalendarModules {
+    @Single
+    fun calendarDatabase(factory: CalendarDbFactory): CalendarDatabase =
+        factory.create().setQueryCoroutineContext(Dispatchers.IO).build()
+}

@@ -5,7 +5,26 @@
     <!-- CalDAV sync. The foss flavor of upstream Grit has no network access otherwise. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Event reminders -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
-    <application android:networkSecurityConfig="@xml/calendar_network_security_config" />
+    <application android:networkSecurityConfig="@xml/calendar_network_security_config">
+        <receiver
+            android:name="com.shub39.grit.calendar.data.CalendarAlarmReceiver"
+            android:exported="false" />
+
+        <!-- System broadcasts after which the reminder alarm must be set again -->
+        <receiver
+            android:name="com.shub39.grit.calendar.data.CalendarTimeReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+        </receiver>
+    </application>
 
 </manifest>
