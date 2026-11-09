@@ -5,6 +5,7 @@ This fork of Grit adds a Calendar tab that syncs with a CalDAV server, for examp
 ## What it does
 
 - It shows a month grid with the events of the selected day, and an agenda list.
+- It keeps calendars on the device only, without a server. These calendars never sync. A hidden local account holds them, so they use the same storage, editor and reminders as synced calendars.
 - It creates, edits and deletes events on calendars that you can write to. A repeating event is edited as a whole series. One occurrence can be deleted on its own.
 - It shows read-only calendars without edit actions. If the server does not give the `DAV:write-content` privilege, the calendar is read-only.
 - It shows reminders as Android notifications. The Grit setting that pauses notifications also pauses calendar reminders.

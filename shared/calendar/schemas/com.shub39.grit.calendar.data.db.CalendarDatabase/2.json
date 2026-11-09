@@ -1,0 +1,590 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 2,
+    "identityHash": "f85d7571bfae72cd181e474a508c848f",
+    "entities": [
+      {
+        "tableName": "account",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `baseUrl` TEXT NOT NULL, `username` TEXT NOT NULL, `local` INTEGER NOT NULL DEFAULT 0, `principalUrl` TEXT, `homeSetUrl` TEXT, `lastSync` INTEGER, `lastError` TEXT)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "baseUrl",
+            "columnName": "baseUrl",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "username",
+            "columnName": "username",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "local",
+            "columnName": "local",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "principalUrl",
+            "columnName": "principalUrl",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "homeSetUrl",
+            "columnName": "homeSetUrl",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "lastSync",
+            "columnName": "lastSync",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastError",
+            "columnName": "lastError",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "collection",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `accountId` INTEGER NOT NULL, `url` TEXT NOT NULL, `displayName` TEXT, `color` INTEGER, `supportsEvents` INTEGER NOT NULL, `supportsTasks` INTEGER NOT NULL, `canWrite` INTEGER NOT NULL, `manual` INTEGER NOT NULL, `visible` INTEGER NOT NULL, `syncEnabled` INTEGER NOT NULL, `syncToken` TEXT, `ctag` TEXT, `lastSync` INTEGER, `lastError` TEXT, FOREIGN KEY(`accountId`) REFERENCES `account`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "accountId",
+            "columnName": "accountId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "url",
+            "columnName": "url",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "displayName",
+            "columnName": "displayName",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "color",
+            "columnName": "color",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "supportsEvents",
+            "columnName": "supportsEvents",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "supportsTasks",
+            "columnName": "supportsTasks",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "canWrite",
+            "columnName": "canWrite",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "manual",
+            "columnName": "manual",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "visible",
+            "columnName": "visible",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "syncEnabled",
+            "columnName": "syncEnabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "syncToken",
+            "columnName": "syncToken",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "ctag",
+            "columnName": "ctag",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "lastSync",
+            "columnName": "lastSync",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastError",
+            "columnName": "lastError",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_collection_accountId_url",
+            "unique": true,
+            "columnNames": [
+              "accountId",
+              "url"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_collection_accountId_url` ON `${TABLE_NAME}` (`accountId`, `url`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "account",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "accountId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "event",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `collectionId` INTEGER NOT NULL, `href` TEXT NOT NULL, `uid` TEXT NOT NULL, `etag` TEXT, `ics` TEXT NOT NULL, `dirty` INTEGER NOT NULL, `deleted` INTEGER NOT NULL, `version` INTEGER NOT NULL, `existsOnServer` INTEGER NOT NULL, `summary` TEXT, `location` TEXT, `description` TEXT, `recurring` INTEGER NOT NULL, `syncError` TEXT, FOREIGN KEY(`collectionId`) REFERENCES `collection`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "collectionId",
+            "columnName": "collectionId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "href",
+            "columnName": "href",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "uid",
+            "columnName": "uid",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "etag",
+            "columnName": "etag",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "ics",
+            "columnName": "ics",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dirty",
+            "columnName": "dirty",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deleted",
+            "columnName": "deleted",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "version",
+            "columnName": "version",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "existsOnServer",
+            "columnName": "existsOnServer",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "summary",
+            "columnName": "summary",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "location",
+            "columnName": "location",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "description",
+            "columnName": "description",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "recurring",
+            "columnName": "recurring",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "syncError",
+            "columnName": "syncError",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_event_collectionId_href",
+            "unique": true,
+            "columnNames": [
+              "collectionId",
+              "href"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_event_collectionId_href` ON `${TABLE_NAME}` (`collectionId`, `href`)"
+          },
+          {
+            "name": "index_event_collectionId_dirty",
+            "unique": false,
+            "columnNames": [
+              "collectionId",
+              "dirty"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_event_collectionId_dirty` ON `${TABLE_NAME}` (`collectionId`, `dirty`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "collection",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "collectionId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "instance",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `eventId` INTEGER NOT NULL, `collectionId` INTEGER NOT NULL, `begin` INTEGER NOT NULL, `end` INTEGER NOT NULL, `allDay` INTEGER NOT NULL, `originalStart` INTEGER, `isOverride` INTEGER NOT NULL, `title` TEXT, `location` TEXT, FOREIGN KEY(`eventId`) REFERENCES `event`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventId",
+            "columnName": "eventId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "collectionId",
+            "columnName": "collectionId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "begin",
+            "columnName": "begin",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "end",
+            "columnName": "end",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "allDay",
+            "columnName": "allDay",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "originalStart",
+            "columnName": "originalStart",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "isOverride",
+            "columnName": "isOverride",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "location",
+            "columnName": "location",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_instance_eventId",
+            "unique": false,
+            "columnNames": [
+              "eventId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_instance_eventId` ON `${TABLE_NAME}` (`eventId`)"
+          },
+          {
+            "name": "index_instance_begin",
+            "unique": false,
+            "columnNames": [
+              "begin"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_instance_begin` ON `${TABLE_NAME}` (`begin`)"
+          },
+          {
+            "name": "index_instance_end",
+            "unique": false,
+            "columnNames": [
+              "end"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_instance_end` ON `${TABLE_NAME}` (`end`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "event",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "eventId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "alarm",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `eventId` INTEGER NOT NULL, `triggerAt` INTEGER NOT NULL, `instanceBegin` INTEGER NOT NULL, `instanceAllDay` INTEGER NOT NULL, `title` TEXT, `location` TEXT, FOREIGN KEY(`eventId`) REFERENCES `event`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventId",
+            "columnName": "eventId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "triggerAt",
+            "columnName": "triggerAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "instanceBegin",
+            "columnName": "instanceBegin",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "instanceAllDay",
+            "columnName": "instanceAllDay",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "location",
+            "columnName": "location",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_alarm_eventId",
+            "unique": false,
+            "columnNames": [
+              "eventId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_alarm_eventId` ON `${TABLE_NAME}` (`eventId`)"
+          },
+          {
+            "name": "index_alarm_triggerAt",
+            "unique": false,
+            "columnNames": [
+              "triggerAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_alarm_triggerAt` ON `${TABLE_NAME}` (`triggerAt`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "event",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "eventId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "sync_conflict",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `collectionId` INTEGER NOT NULL, `href` TEXT NOT NULL, `localIcs` TEXT NOT NULL, `remoteIcs` TEXT, `createdAt` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "collectionId",
+            "columnName": "collectionId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "href",
+            "columnName": "href",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "localIcs",
+            "columnName": "localIcs",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "remoteIcs",
+            "columnName": "remoteIcs",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "kv",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`key` TEXT NOT NULL, `value` INTEGER NOT NULL, PRIMARY KEY(`key`))",
+        "fields": [
+          {
+            "fieldPath": "key",
+            "columnName": "key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "value",
+            "columnName": "value",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "key"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'f85d7571bfae72cd181e474a508c848f')"
+    ]
+  }
+}

@@ -154,9 +154,9 @@ class ScreenshotTest {
         }
 
     @Test
-    fun noAccount() =
-        shoot("calendar-connect") {
-            CalendarHomeScreen(sample.copy(hasAccount = false, canCreate = false), {}, {}, {}, {})
+    fun noCalendars() =
+        shoot("calendar-empty") {
+            CalendarHomeScreen(sample.copy(hasCalendars = false, canCreate = false), {}, {}, {}, {})
         }
 
     @Test
@@ -256,6 +256,7 @@ class ScreenshotTest {
             )
         }
         val store = CalendarStore(db)
+        runBlocking { store.createLocalCalendar("Personal", indigo) }
         val manager =
             com.shub39.grit.calendar.data.CalendarSyncManager(
                 db,
@@ -264,7 +265,44 @@ class ScreenshotTest {
                 com.shub39.grit.calendar.data.ReminderScheduler(),
             )
         val viewModel = com.shub39.grit.calendar.ui.account.AccountViewModel(store, manager)
-        shoot("calendar-account", ready = { viewModel.state.value.collections.size == 3 }) {
+        shoot(
+            "calendar-account",
+            ready = {
+                viewModel.state.value.collections.size == 3 &&
+                    viewModel.state.value.localCalendars.size == 1
+            },
+        ) {
+            val state by viewModel.state.collectAsState()
+            com.shub39.grit.calendar.ui.account.AccountScreen(state, viewModel, onBack = {})
+        }
+        db.close()
+    }
+
+    @Test
+    fun accountLocalOnly() {
+        System.setProperty(
+            "grit.calendar.dir",
+            java.nio.file.Files.createTempDirectory("shots").toString(),
+        )
+        val db =
+            Room.inMemoryDatabaseBuilder<CalendarDatabase>()
+                .setDriver(BundledSQLiteDriver())
+                .setQueryCoroutineContext(Dispatchers.IO)
+                .build()
+        val store = CalendarStore(db)
+        runBlocking { store.createLocalCalendar("Personal", indigo) }
+        val manager =
+            com.shub39.grit.calendar.data.CalendarSyncManager(
+                db,
+                store,
+                com.shub39.grit.calendar.data.CredentialStore(),
+                com.shub39.grit.calendar.data.ReminderScheduler(),
+            )
+        val viewModel = com.shub39.grit.calendar.ui.account.AccountViewModel(store, manager)
+        shoot(
+            "calendar-account-local",
+            ready = { viewModel.state.value.localCalendars.size == 1 },
+        ) {
             val state by viewModel.state.collectAsState()
             com.shub39.grit.calendar.ui.account.AccountScreen(state, viewModel, onBack = {})
         }

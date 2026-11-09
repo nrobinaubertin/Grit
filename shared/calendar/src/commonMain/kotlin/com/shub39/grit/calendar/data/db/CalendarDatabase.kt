@@ -16,6 +16,7 @@
  */
 package com.shub39.grit.calendar.data.db
 
+import androidx.room3.AutoMigration
 import androidx.room3.ConstructedBy
 import androidx.room3.Database
 import androidx.room3.RoomDatabase
@@ -35,6 +36,7 @@ import org.koin.core.annotation.Single
         ],
     version = CalendarDatabase.SCHEMA_VERSION,
     exportSchema = true,
+    autoMigrations = [AutoMigration(from = 1, to = 2)],
 )
 @ConstructedBy(CalendarDbConstructor::class)
 abstract class CalendarDatabase : RoomDatabase() {
@@ -42,7 +44,7 @@ abstract class CalendarDatabase : RoomDatabase() {
 
     companion object {
         const val DB_NAME = "calendar_database"
-        const val SCHEMA_VERSION = 1
+        const val SCHEMA_VERSION = 2
     }
 }
 

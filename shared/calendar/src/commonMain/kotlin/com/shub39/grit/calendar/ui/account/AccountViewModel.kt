@@ -47,6 +47,8 @@ data class AccountForm(
 data class AccountState(
     val account: AccountEntity? = null,
     val collections: List<CollectionEntity> = emptyList(),
+    /** Calendars that exist only on this device. */
+    val localCalendars: List<CollectionEntity> = emptyList(),
     val form: AccountForm = AccountForm(),
     val syncing: Boolean = false,
     val loaded: Boolean = false,
@@ -65,10 +67,12 @@ class AccountViewModel(
                 collections,
                 running,
                 form ->
-                val account = accounts.firstOrNull()
+                val account = accounts.firstOrNull { !it.local }
+                val local = accounts.firstOrNull { it.local }
                 AccountState(
                     account = account,
                     collections = collections.filter { it.accountId == account?.id },
+                    localCalendars = collections.filter { it.accountId == local?.id },
                     form = form,
                     syncing = running,
                     loaded = true,
@@ -142,6 +146,14 @@ class AccountViewModel(
                 }
             onResult(error)
         }
+    }
+
+    fun createLocalCalendar(name: String, color: Int) {
+        viewModelScope.launch { store.createLocalCalendar(name.trim(), color) }
+    }
+
+    fun deleteLocalCalendar(collectionId: Long) {
+        viewModelScope.launch { store.deleteLocalCalendar(collectionId) }
     }
 
     fun removeCollection(collectionId: Long) {

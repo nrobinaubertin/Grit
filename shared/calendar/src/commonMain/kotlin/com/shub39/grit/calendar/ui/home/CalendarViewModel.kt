@@ -88,7 +88,9 @@ data class CalendarUiState(
     val today: LocalDate = today(),
     val eventsByDay: Map<LocalDate, List<DayEvent>> = emptyMap(),
     val agenda: List<Pair<LocalDate, List<DayEvent>>> = emptyList(),
-    val hasAccount: Boolean = true,
+    /** False until the user creates a calendar on this device or connects a server. */
+    val hasCalendars: Boolean = true,
+    val hasServer: Boolean = false,
     val canCreate: Boolean = false,
     val syncing: Boolean = false,
     val syncError: String? = null,
@@ -120,6 +122,9 @@ sealed interface CalendarAction {
     data class DeleteEvent(val eventId: Long) : CalendarAction
 
     data class DeleteOccurrence(val eventId: Long, val originalStart: Long) : CalendarAction
+
+    /** Creates a first calendar on this device, from the empty screen. */
+    data class CreateLocalCalendar(val name: String) : CalendarAction
 }
 
 private data class LocalState(
@@ -176,7 +181,8 @@ class CalendarViewModel(
             store.pendingCountFlow(),
         ) { accounts, collections, running, pending ->
             SyncInfo(
-                hasAccount = accounts.isNotEmpty(),
+                hasCalendars = collections.isNotEmpty(),
+                hasServer = accounts.any { !it.local },
                 canCreate = collections.any { it.canWrite && it.supportsEvents },
                 syncing = running,
                 error =
@@ -202,7 +208,8 @@ class CalendarViewModel(
                     today = today(),
                     eventsByDay = month,
                     agenda = agenda,
-                    hasAccount = sync.hasAccount,
+                    hasCalendars = sync.hasCalendars,
+                    hasServer = sync.hasServer,
                     canCreate = sync.canCreate,
                     syncing = sync.syncing,
                     syncError = sync.error,
@@ -246,6 +253,10 @@ class CalendarViewModel(
                     local.update { it.copy(details = null) }
                     store.deleteEvent(action.eventId)
                 }
+            is CalendarAction.CreateLocalCalendar ->
+                viewModelScope.launch {
+                    store.createLocalCalendar(action.name, LOCAL_COLORS.first())
+                }
             is CalendarAction.DeleteOccurrence ->
                 viewModelScope.launch {
                     local.update { it.copy(details = null) }
@@ -272,7 +283,8 @@ class CalendarViewModel(
     }
 
     private class SyncInfo(
-        val hasAccount: Boolean,
+        val hasCalendars: Boolean,
+        val hasServer: Boolean,
         val canCreate: Boolean,
         val syncing: Boolean,
         val error: String?,
@@ -281,6 +293,19 @@ class CalendarViewModel(
 }
 
 private const val AGENDA_PAGE_DAYS = 60
+
+/** Colors offered for calendars on this device (ARGB). */
+val LOCAL_COLORS =
+    listOf(
+        0xFF3F51B5.toInt(),
+        0xFFE91E63.toInt(),
+        0xFF009688.toInt(),
+        0xFFFF9800.toInt(),
+        0xFF4CAF50.toInt(),
+        0xFF9C27B0.toInt(),
+        0xFF2196F3.toInt(),
+        0xFF795548.toInt(),
+    )
 private const val DAY_MS = 24 * 60 * 60 * 1000L
 
 internal fun today(): LocalDate = java.time.LocalDate.now().toKotlinLocalDate()

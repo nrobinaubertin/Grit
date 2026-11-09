@@ -119,7 +119,8 @@ class CalendarSyncManager(
         mutex.withLock {
             _running.value = true
             try {
-                for (account in dao.accounts()) syncAccount(account)
+                // Calendars on this device have no server
+                for (account in dao.accounts()) if (!account.local) syncAccount(account)
                 store.moveWindowForward()
             } finally {
                 _running.value = false

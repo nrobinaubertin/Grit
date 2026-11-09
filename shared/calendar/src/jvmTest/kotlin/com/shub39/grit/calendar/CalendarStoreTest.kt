@@ -167,6 +167,55 @@ class CalendarStoreTest {
     }
 
     @Test
+    fun `calendars on this device keep events without pending uploads`() = runBlocking {
+        val calendar = store.createLocalCalendar("Personal", 0xFF3F51B5.toInt())
+        assertEquals(true, dao.isLocalCollection(calendar))
+        // A second calendar reuses the same local account
+        store.createLocalCalendar("Work", 0xFF009688.toInt())
+        assertEquals(1, dao.accounts().count { it.local })
+
+        val id =
+            store.createEvent(
+                calendar,
+                EventDraft(
+                    summary = "Haircut",
+                    start = IcalTime.Utc(Instant.parse("2026-11-21T10:00:00Z")),
+                    end = IcalTime.Utc(Instant.parse("2026-11-21T11:00:00Z")),
+                ),
+            )
+        val local = EventCollection(store, dao, calendar, "local:x/")
+        assertTrue(local.pendingChanges().isEmpty())
+        assertEquals(0, dao.pendingCountFlow().first())
+        store.updateEvent(
+            id,
+            EventDraft(
+                summary = "Haircut (moved)",
+                start = IcalTime.Utc(Instant.parse("2026-11-22T10:00:00Z")),
+                end = IcalTime.Utc(Instant.parse("2026-11-22T11:00:00Z")),
+            ),
+        )
+        assertTrue(local.pendingChanges().isEmpty())
+        assertEquals(
+            "Haircut (moved)",
+            instances("2026-11-22T00:00:00Z", "2026-11-23T00:00:00Z").single().title,
+        )
+
+        store.deleteEvent(id)
+        assertEquals(null, dao.event(id))
+
+        store.createEvent(
+            calendar,
+            EventDraft(
+                summary = "Kept until the calendar goes",
+                start = IcalTime.Utc(Instant.parse("2026-11-23T10:00:00Z")),
+                end = IcalTime.Utc(Instant.parse("2026-11-23T11:00:00Z")),
+            ),
+        )
+        store.deleteLocalCalendar(calendar)
+        assertTrue(instances("2026-11-01T00:00:00Z", "2026-12-01T00:00:00Z").isEmpty())
+    }
+
+    @Test
     fun `deleting one occurrence removes only that instance`() = runBlocking {
         val collectionId = collection()
         val id =

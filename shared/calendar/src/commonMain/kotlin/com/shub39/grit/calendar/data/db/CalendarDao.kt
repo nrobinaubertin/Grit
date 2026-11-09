@@ -53,6 +53,13 @@ interface CalendarDao {
 
     @Query("SELECT * FROM account WHERE id = :id") suspend fun account(id: Long): AccountEntity?
 
+    @Query("SELECT * FROM account WHERE local = 1 LIMIT 1")
+    suspend fun localAccount(): AccountEntity?
+
+    /** True if the calendar belongs to the local account (it never syncs). */
+    @Query("SELECT a.local FROM collection c JOIN account a ON a.id = c.accountId WHERE c.id = :id")
+    suspend fun isLocalCollection(id: Long): Boolean?
+
     @Upsert suspend fun upsertAccount(account: AccountEntity): Long
 
     @Query("DELETE FROM account WHERE id = :id") suspend fun deleteAccount(id: Long)

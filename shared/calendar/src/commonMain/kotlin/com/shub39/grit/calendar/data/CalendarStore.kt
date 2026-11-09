@@ -21,6 +21,7 @@ import com.shub39.grit.caldav.RemoteItem
 import com.shub39.grit.caldav.ical.EventDraft
 import com.shub39.grit.caldav.ical.EventInfo
 import com.shub39.grit.caldav.ical.EventResource
+import com.shub39.grit.calendar.data.db.AccountEntity
 import com.shub39.grit.calendar.data.db.AlarmEntity
 import com.shub39.grit.calendar.data.db.CalendarDao
 import com.shub39.grit.calendar.data.db.CalendarDatabase
@@ -76,6 +77,32 @@ class CalendarStore(private val db: CalendarDatabase) {
         val collection = dao.collection(event.collectionId) ?: return null
         val info = runCatching { EventResource.parse(event.ics).info() }.getOrNull() ?: return null
         return EventDetails(eventId, collection, info)
+    }
+
+    // --- calendars on this device ---
+
+    /** Creates a calendar that exists only on this device. Returns its ID. */
+    suspend fun createLocalCalendar(name: String, color: Int): Long {
+        val account =
+            dao.localAccount()?.id
+                ?: dao.upsertAccount(AccountEntity(baseUrl = "", username = "", local = true))
+        return dao.insertCollection(
+            CollectionEntity(
+                accountId = account,
+                url = LOCAL_URL_PREFIX + UUID.randomUUID() + "/",
+                displayName = name,
+                color = color,
+                canWrite = true,
+                syncEnabled = false,
+            )
+        )
+    }
+
+    /** Deletes a calendar on this device with all its events. */
+    suspend fun deleteLocalCalendar(collectionId: Long) {
+        if (dao.isLocalCollection(collectionId) != true) return
+        dao.deleteCollection(collectionId)
+        _localChanges.tryEmit(Unit)
     }
 
     // --- expansion window ---
@@ -255,6 +282,7 @@ class CalendarStore(private val db: CalendarDatabase) {
 
     suspend fun createEvent(collectionId: Long, draft: EventDraft): Long {
         val collection = dao.collection(collectionId) ?: error("Unknown calendar $collectionId")
+        val local = dao.isLocalCollection(collectionId) == true
         val uid = UUID.randomUUID().toString()
         val resource = EventResource.create(uid, draft, clock.now())
         val event =
@@ -263,7 +291,8 @@ class CalendarStore(private val db: CalendarDatabase) {
                 href = collection.url.trimEnd('/') + "/" + uid + ".ics",
                 uid = uid,
                 ics = resource.toIcs(),
-                dirty = true,
+                // Events of a calendar on this device have nothing to upload
+                dirty = !local,
                 version = 1,
                 existsOnServer = false,
                 summary = draft.summary,
@@ -294,7 +323,7 @@ class CalendarStore(private val db: CalendarDatabase) {
 
     suspend fun deleteEvent(eventId: Long) {
         val event = dao.event(eventId) ?: return
-        if (!event.existsOnServer) {
+        if (!event.existsOnServer || dao.isLocalCollection(event.collectionId) == true) {
             dao.deleteEvent(eventId)
         } else {
             val deleted = event.copy(deleted = true, dirty = true, version = event.version + 1)
@@ -309,7 +338,7 @@ class CalendarStore(private val db: CalendarDatabase) {
         val updated =
             event.copy(
                 ics = resource.toIcs(),
-                dirty = true,
+                dirty = dao.isLocalCollection(event.collectionId) != true,
                 version = event.version + 1,
                 summary = info?.summary,
                 location = info?.location,
@@ -328,6 +357,9 @@ class CalendarStore(private val db: CalendarDatabase) {
     private fun EventInfo?.isRecurring(): Boolean = this != null && (rrule != null || hasExceptions)
 
     companion object {
+        /** URL prefix of calendars on this device. They have no server URL. */
+        const val LOCAL_URL_PREFIX = "local:"
+
         private const val WINDOW_START = "window_start"
         private const val WINDOW_END = "window_end"
         private val WINDOW_BEFORE = 92.days

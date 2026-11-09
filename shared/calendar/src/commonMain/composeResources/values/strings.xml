@@ -6,7 +6,7 @@
     <string name="today">Today</string>
     <string name="sync_now">Sync now</string>
     <string name="syncing">Syncing…</string>
-    <string name="accounts">Accounts</string>
+    <string name="accounts">Calendars and accounts</string>
     <string name="new_event">New event</string>
     <string name="no_events">No events</string>
     <string name="all_day">All day</string>
@@ -65,4 +65,16 @@
     <string name="title_required">Enter a title.</string>
     <string name="no_writable_calendar">No calendar accepts new events. Connect an account, or ask for write access.</string>
     <string name="ok">OK</string>
+    <string name="empty_title">No calendars yet</string>
+    <string name="empty_body">Keep a calendar on this device, or connect a CalDAV server, for example Radicale, to share calendars with other people.</string>
+    <string name="use_local_calendar">Create a calendar on this device</string>
+    <string name="default_local_calendar">Personal</string>
+    <string name="on_this_device">On this device</string>
+    <string name="on_this_device_body">These calendars stay on this phone. They do not sync.</string>
+    <string name="new_local_calendar">New calendar on this device</string>
+    <string name="calendar_name">Name</string>
+    <string name="color">Color</string>
+    <string name="create">Create</string>
+    <string name="delete_local_calendar_confirm">Delete the calendar \"%1$s\" and all its events? This cannot be undone.</string>
+    <string name="caldav_server">CalDAV server</string>
 </resources>

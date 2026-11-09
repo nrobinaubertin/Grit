@@ -48,6 +48,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MediumFloatingActionButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -96,19 +97,25 @@ fun CalendarHomeScreen(
         Box(modifier = Modifier.fillMaxSize()) {
             Column(modifier = Modifier.fillMaxSize()) {
                 CalendarTopBar(state, onAction, onOpenAccount)
-                if (!state.hasAccount) {
-                    ConnectPrompt(onOpenAccount)
-                } else {
-                    PullToRefreshBox(
-                        isRefreshing = state.syncing,
-                        onRefresh = { onAction(CalendarAction.Refresh) },
-                        modifier = Modifier.fillMaxSize(),
-                    ) {
-                        when (state.mode) {
-                            CalendarMode.Month -> MonthView(state, onAction)
-                            CalendarMode.Agenda -> AgendaView(state, onAction)
+                val defaultName = stringResource(Res.string.default_local_calendar)
+                when {
+                    !state.hasCalendars ->
+                        EmptyPrompt(
+                            onCreateLocal = {
+                                onAction(CalendarAction.CreateLocalCalendar(defaultName))
+                            },
+                            onConnect = onOpenAccount,
+                        )
+                    // Pull to refresh only makes sense with a server
+                    state.hasServer ->
+                        PullToRefreshBox(
+                            isRefreshing = state.syncing,
+                            onRefresh = { onAction(CalendarAction.Refresh) },
+                            modifier = Modifier.fillMaxSize(),
+                        ) {
+                            CalendarContent(state, onAction)
                         }
-                    }
+                    else -> CalendarContent(state, onAction)
                 }
             }
 
@@ -159,6 +166,14 @@ fun CalendarHomeScreen(
 }
 
 @Composable
+private fun CalendarContent(state: CalendarUiState, onAction: (CalendarAction) -> Unit) {
+    when (state.mode) {
+        CalendarMode.Month -> MonthView(state, onAction)
+        CalendarMode.Agenda -> AgendaView(state, onAction)
+    }
+}
+
+@Composable
 private fun CalendarTopBar(
     state: CalendarUiState,
     onAction: (CalendarAction) -> Unit,
@@ -186,7 +201,7 @@ private fun CalendarTopBar(
                 }
             },
         )
-        if (state.hasAccount) {
+        if (state.hasCalendars) {
             SingleChoiceSegmentedButtonRow(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
             ) {
@@ -231,7 +246,7 @@ private fun CalendarTopBar(
 }
 
 @Composable
-private fun ConnectPrompt(onOpenAccount: () -> Unit) {
+private fun EmptyPrompt(onCreateLocal: () -> Unit, onConnect: () -> Unit) {
     Column(
         modifier = Modifier.fillMaxSize().padding(32.dp),
         verticalArrangement = Arrangement.Center,
@@ -245,19 +260,21 @@ private fun ConnectPrompt(onOpenAccount: () -> Unit) {
         )
         Spacer(Modifier.height(16.dp))
         Text(
-            text = stringResource(Res.string.connect_title),
+            text = stringResource(Res.string.empty_title),
             style = MaterialTheme.typography.titleLarge,
             textAlign = TextAlign.Center,
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            text = stringResource(Res.string.connect_body),
+            text = stringResource(Res.string.empty_body),
             style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(24.dp))
-        Button(onClick = onOpenAccount) { Text(stringResource(Res.string.connect)) }
+        Button(onClick = onCreateLocal) { Text(stringResource(Res.string.use_local_calendar)) }
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(onClick = onConnect) { Text(stringResource(Res.string.connect_title)) }
     }
 }
 

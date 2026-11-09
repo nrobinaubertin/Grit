@@ -16,17 +16,22 @@
  */
 package com.shub39.grit.calendar.data.db
 
+import androidx.room3.ColumnInfo
 import androidx.room3.Entity
 import androidx.room3.ForeignKey
 import androidx.room3.Index
 import androidx.room3.PrimaryKey
 
-/** A CalDAV account. The password is kept by the credential store, not in this table. */
+/**
+ * A CalDAV account. The password is kept by the credential store, not in this table. One special
+ * account with [local] set holds the calendars that exist only on this device; it never syncs.
+ */
 @Entity(tableName = "account")
 data class AccountEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val baseUrl: String,
     val username: String,
+    @ColumnInfo(defaultValue = "0") val local: Boolean = false,
     val principalUrl: String? = null,
     val homeSetUrl: String? = null,
     /** Epoch milliseconds of the last finished sync. */

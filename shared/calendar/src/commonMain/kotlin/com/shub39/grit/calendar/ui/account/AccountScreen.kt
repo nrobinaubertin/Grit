@@ -17,9 +17,13 @@
 package com.shub39.grit.calendar.ui.account
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -28,6 +32,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -37,6 +42,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -59,12 +65,20 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.shub39.grit.calendar.data.db.CollectionEntity
 import com.shub39.grit.calendar.ui.Formatting
+import com.shub39.grit.calendar.ui.home.LOCAL_COLORS
 import grit.shared.calendar.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.resources.vectorResource
 
+/** Calendars on this device, and the CalDAV account with its calendars. */
 @Composable
 fun AccountScreen(state: AccountState, viewModel: AccountViewModel, onBack: () -> Unit) {
+    var newLocal by remember { mutableStateOf(false) }
+    var deleteLocal by remember { mutableStateOf<CollectionEntity?>(null) }
+    var addByUrl by remember { mutableStateOf(false) }
+    var confirmRemove by remember { mutableStateOf(false) }
+    var changePassword by remember { mutableStateOf(false) }
+
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(modifier = Modifier.fillMaxSize().imePadding()) {
             TopAppBar(
@@ -78,21 +92,205 @@ fun AccountScreen(state: AccountState, viewModel: AccountViewModel, onBack: () -
                     }
                 },
             )
-            when {
-                !state.loaded -> Unit
-                state.account == null -> ConnectForm(state.form, viewModel)
-                else -> AccountDetails(state, viewModel)
+            if (!state.loaded) return@Column
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                localSection(
+                    state,
+                    viewModel,
+                    onNew = { newLocal = true },
+                    onDelete = { deleteLocal = it },
+                )
+                item { SectionTitle(stringResource(Res.string.caldav_server)) }
+                if (state.account == null) {
+                    item { ConnectForm(state.form, viewModel) }
+                } else {
+                    serverSection(
+                        state,
+                        viewModel,
+                        onAddByUrl = { addByUrl = true },
+                        onChangePassword = { changePassword = true },
+                        onRemove = { confirmRemove = true },
+                    )
+                }
             }
+        }
+    }
+
+    if (newLocal) NewLocalCalendarDialog(viewModel, onDismiss = { newLocal = false })
+    deleteLocal?.let { calendar ->
+        AlertDialog(
+            onDismissRequest = { deleteLocal = null },
+            text = {
+                Text(
+                    stringResource(
+                        Res.string.delete_local_calendar_confirm,
+                        calendar.displayName.orEmpty(),
+                    )
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.deleteLocalCalendar(calendar.id)
+                        deleteLocal = null
+                    }
+                ) {
+                    Text(stringResource(Res.string.delete), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteLocal = null }) {
+                    Text(stringResource(Res.string.cancel))
+                }
+            },
+        )
+    }
+    if (addByUrl) AddByUrlDialog(viewModel, onDismiss = { addByUrl = false })
+    if (changePassword) ChangePasswordDialog(viewModel, onDismiss = { changePassword = false })
+    if (confirmRemove) {
+        AlertDialog(
+            onDismissRequest = { confirmRemove = false },
+            title = { Text(stringResource(Res.string.remove_account)) },
+            text = { Text(stringResource(Res.string.remove_account_confirm)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmRemove = false
+                        viewModel.removeAccount()
+                    }
+                ) {
+                    Text(stringResource(Res.string.remove), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmRemove = false }) {
+                    Text(stringResource(Res.string.cancel))
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun SectionTitle(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.titleMedium,
+        modifier = Modifier.padding(top = 8.dp),
+    )
+}
+
+private fun LazyListScope.localSection(
+    state: AccountState,
+    viewModel: AccountViewModel,
+    onNew: () -> Unit,
+    onDelete: (CollectionEntity) -> Unit,
+) {
+    item {
+        Column {
+            SectionTitle(stringResource(Res.string.on_this_device))
+            Text(
+                stringResource(Res.string.on_this_device_body),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+    items(state.localCalendars, key = { "local-${it.id}" }) { calendar ->
+        CalendarRow(
+            collection = calendar,
+            onVisible = { viewModel.setVisible(calendar.id, it) },
+            syncSwitch = null,
+            trailing = {
+                IconButton(onClick = { onDelete(calendar) }) {
+                    Icon(
+                        vectorResource(Res.drawable.delete),
+                        contentDescription = stringResource(Res.string.delete),
+                    )
+                }
+            },
+        )
+    }
+    item { TextButton(onClick = onNew) { Text(stringResource(Res.string.new_local_calendar)) } }
+}
+
+private fun LazyListScope.serverSection(
+    state: AccountState,
+    viewModel: AccountViewModel,
+    onAddByUrl: () -> Unit,
+    onChangePassword: () -> Unit,
+    onRemove: () -> Unit,
+) {
+    val account = state.account ?: return
+    item {
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(account.username, style = MaterialTheme.typography.titleMedium)
+                Text(account.baseUrl, style = MaterialTheme.typography.bodySmall)
+                Text(
+                    text =
+                        account.lastSync?.let {
+                            stringResource(Res.string.last_sync, Formatting.dateTime(it))
+                        } ?: stringResource(Res.string.never_synced),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                account.lastError?.let {
+                    Text(
+                        stringResource(Res.string.sync_error, it),
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(top = 8.dp),
+                ) {
+                    Button(onClick = viewModel::syncNow, enabled = !state.syncing) {
+                        Text(
+                            stringResource(
+                                if (state.syncing) Res.string.syncing else Res.string.sync_now
+                            )
+                        )
+                    }
+                    OutlinedButton(onClick = onChangePassword) {
+                        Text(stringResource(Res.string.change_password))
+                    }
+                }
+            }
+        }
+    }
+    items(state.collections, key = { it.id }) { collection ->
+        CalendarRow(
+            collection = collection,
+            onVisible = { viewModel.setVisible(collection.id, it) },
+            syncSwitch = { viewModel.setSyncEnabled(collection.id, it) },
+            trailing = null,
+            onRemove =
+                if (collection.manual) ({ viewModel.removeCollection(collection.id) }) else null,
+        )
+    }
+    item { TextButton(onClick = onAddByUrl) { Text(stringResource(Res.string.add_by_url)) } }
+    item {
+        OutlinedButton(
+            onClick = onRemove,
+            modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+        ) {
+            Text(stringResource(Res.string.remove_account), color = MaterialTheme.colorScheme.error)
         }
     }
 }
 
 @Composable
 private fun ConnectForm(form: AccountForm, viewModel: AccountViewModel) {
-    Column(
-        modifier = Modifier.fillMaxWidth().padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(stringResource(Res.string.connect_body), style = MaterialTheme.typography.bodyMedium)
         OutlinedTextField(
             value = form.url,
@@ -145,200 +343,19 @@ private fun ConnectForm(form: AccountForm, viewModel: AccountViewModel) {
 }
 
 @Composable
-private fun AccountDetails(state: AccountState, viewModel: AccountViewModel) {
-    val account = state.account ?: return
-    var addByUrl by remember { mutableStateOf(false) }
-    var confirmRemove by remember { mutableStateOf(false) }
-    var changePassword by remember { mutableStateOf(false) }
-
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        item {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Text(account.username, style = MaterialTheme.typography.titleMedium)
-                    Text(account.baseUrl, style = MaterialTheme.typography.bodySmall)
-                    Text(
-                        text =
-                            account.lastSync?.let {
-                                stringResource(Res.string.last_sync, Formatting.dateTime(it))
-                            } ?: stringResource(Res.string.never_synced),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    account.lastError?.let {
-                        Text(
-                            stringResource(Res.string.sync_error, it),
-                            color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.padding(top = 8.dp),
-                    ) {
-                        Button(onClick = viewModel::syncNow, enabled = !state.syncing) {
-                            Text(
-                                stringResource(
-                                    if (state.syncing) Res.string.syncing else Res.string.sync_now
-                                )
-                            )
-                        }
-                        OutlinedButton(onClick = { changePassword = true }) {
-                            Text(stringResource(Res.string.change_password))
-                        }
-                    }
-                }
-            }
-        }
-
-        item {
-            Text(
-                stringResource(Res.string.calendars),
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(top = 16.dp),
-            )
-        }
-        items(state.collections, key = { it.id }) { collection ->
-            CollectionRow(collection, viewModel)
-        }
-        item {
-            TextButton(onClick = { addByUrl = true }) {
-                Text(stringResource(Res.string.add_by_url))
-            }
-        }
-        item {
-            OutlinedButton(
-                onClick = { confirmRemove = true },
-                modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
-            ) {
-                Text(
-                    stringResource(Res.string.remove_account),
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
-        }
-    }
-
-    if (addByUrl) {
-        var url by remember { mutableStateOf("") }
-        var error by remember { mutableStateOf<String?>(null) }
-        var busy by remember { mutableStateOf(false) }
-        AlertDialog(
-            onDismissRequest = { addByUrl = false },
-            title = { Text(stringResource(Res.string.add_by_url)) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = url,
-                        onValueChange = { url = it },
-                        label = { Text(stringResource(Res.string.calendar_url)) },
-                        singleLine = true,
-                    )
-                    error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    enabled = url.isNotBlank() && !busy,
-                    onClick = {
-                        busy = true
-                        viewModel.addByUrl(url) { result ->
-                            busy = false
-                            error = result
-                            if (result == null) addByUrl = false
-                        }
-                    },
-                ) {
-                    Text(stringResource(Res.string.add))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { addByUrl = false }) {
-                    Text(stringResource(Res.string.cancel))
-                }
-            },
-        )
-    }
-
-    if (changePassword) {
-        var password by remember { mutableStateOf("") }
-        AlertDialog(
-            onDismissRequest = { changePassword = false },
-            title = { Text(stringResource(Res.string.change_password)) },
-            text = {
-                OutlinedTextField(
-                    value = password,
-                    onValueChange = { password = it },
-                    label = { Text(stringResource(Res.string.password)) },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    enabled = password.isNotEmpty(),
-                    onClick = {
-                        viewModel.changePassword(password)
-                        changePassword = false
-                    },
-                ) {
-                    Text(stringResource(Res.string.save))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { changePassword = false }) {
-                    Text(stringResource(Res.string.cancel))
-                }
-            },
-        )
-    }
-
-    if (confirmRemove) {
-        AlertDialog(
-            onDismissRequest = { confirmRemove = false },
-            title = { Text(stringResource(Res.string.remove_account)) },
-            text = { Text(stringResource(Res.string.remove_account_confirm)) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        confirmRemove = false
-                        viewModel.removeAccount()
-                    }
-                ) {
-                    Text(stringResource(Res.string.remove), color = MaterialTheme.colorScheme.error)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmRemove = false }) {
-                    Text(stringResource(Res.string.cancel))
-                }
-            },
-        )
-    }
-}
-
-@Composable
-private fun CollectionRow(collection: CollectionEntity, viewModel: AccountViewModel) {
+private fun CalendarRow(
+    collection: CollectionEntity,
+    onVisible: (Boolean) -> Unit,
+    syncSwitch: ((Boolean) -> Unit)?,
+    trailing: (@Composable () -> Unit)?,
+    onRemove: (() -> Unit)? = null,
+) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                modifier =
-                    Modifier.size(14.dp)
-                        .clip(CircleShape)
-                        .background(
-                            collection.color?.let { Color(it) } ?: MaterialTheme.colorScheme.primary
-                        )
-            )
+            ColorDot(collection.color)
             Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
                 Text(
                     collection.displayName ?: collection.url,
@@ -358,38 +375,180 @@ private fun CollectionRow(collection: CollectionEntity, viewModel: AccountViewMo
                             else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                if (collection.manual) {
-                    TextButton(
-                        onClick = { viewModel.removeCollection(collection.id) },
-                        contentPadding = PaddingValues(0.dp),
-                    ) {
+                if (onRemove != null) {
+                    TextButton(onClick = onRemove, contentPadding = PaddingValues(0.dp)) {
                         Text(stringResource(Res.string.remove))
                     }
                 }
             }
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    stringResource(Res.string.show_in_calendar),
-                    style = MaterialTheme.typography.labelSmall,
-                )
-                Switch(
-                    checked = collection.visible,
-                    onCheckedChange = { viewModel.setVisible(collection.id, it) },
-                )
-            }
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(start = 8.dp),
-            ) {
-                Text(
+            LabeledSwitch(
+                stringResource(Res.string.show_in_calendar),
+                collection.visible,
+                onVisible,
+            )
+            if (syncSwitch != null) {
+                LabeledSwitch(
                     stringResource(Res.string.sync_calendar),
-                    style = MaterialTheme.typography.labelSmall,
-                )
-                Switch(
-                    checked = collection.syncEnabled,
-                    onCheckedChange = { viewModel.setSyncEnabled(collection.id, it) },
+                    collection.syncEnabled,
+                    syncSwitch,
+                    Modifier.padding(start = 8.dp),
                 )
             }
+            trailing?.invoke()
         }
     }
+}
+
+@Composable
+private fun LabeledSwitch(
+    label: String,
+    checked: Boolean,
+    onChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = modifier) {
+        Text(label, style = MaterialTheme.typography.labelSmall)
+        Switch(checked = checked, onCheckedChange = onChange)
+    }
+}
+
+@Composable
+private fun ColorDot(color: Int?, size: Int = 14) {
+    Box(
+        modifier =
+            Modifier.size(size.dp)
+                .clip(CircleShape)
+                .background(color?.let { Color(it) } ?: MaterialTheme.colorScheme.primary)
+    )
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun NewLocalCalendarDialog(viewModel: AccountViewModel, onDismiss: () -> Unit) {
+    var name by remember { mutableStateOf("") }
+    var color by remember { mutableStateOf(LOCAL_COLORS.first()) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(Res.string.new_local_calendar)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text(stringResource(Res.string.calendar_name)) },
+                    singleLine = true,
+                )
+                Text(stringResource(Res.string.color), style = MaterialTheme.typography.labelLarge)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    for (option in LOCAL_COLORS) {
+                        Box(
+                            modifier =
+                                Modifier.size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(option))
+                                    .then(
+                                        if (option == color) {
+                                            Modifier.border(
+                                                3.dp,
+                                                MaterialTheme.colorScheme.onSurface,
+                                                CircleShape,
+                                            )
+                                        } else Modifier
+                                    )
+                                    .clickable { color = option }
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = name.isNotBlank(),
+                onClick = {
+                    viewModel.createLocalCalendar(name, color)
+                    onDismiss()
+                },
+            ) {
+                Text(stringResource(Res.string.create))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(Res.string.cancel)) }
+        },
+    )
+}
+
+@Composable
+private fun AddByUrlDialog(viewModel: AccountViewModel, onDismiss: () -> Unit) {
+    var url by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(Res.string.add_by_url)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = url,
+                    onValueChange = { url = it },
+                    label = { Text(stringResource(Res.string.calendar_url)) },
+                    singleLine = true,
+                )
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = url.isNotBlank() && !busy,
+                onClick = {
+                    busy = true
+                    viewModel.addByUrl(url) { result ->
+                        busy = false
+                        error = result
+                        if (result == null) onDismiss()
+                    }
+                },
+            ) {
+                Text(stringResource(Res.string.add))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(Res.string.cancel)) }
+        },
+    )
+}
+
+@Composable
+private fun ChangePasswordDialog(viewModel: AccountViewModel, onDismiss: () -> Unit) {
+    var password by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(Res.string.change_password)) },
+        text = {
+            OutlinedTextField(
+                value = password,
+                onValueChange = { password = it },
+                label = { Text(stringResource(Res.string.password)) },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+            )
+        },
+        confirmButton = {
+            TextButton(
+                enabled = password.isNotEmpty(),
+                onClick = {
+                    viewModel.changePassword(password)
+                    onDismiss()
+                },
+            ) {
+                Text(stringResource(Res.string.save))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(Res.string.cancel)) }
+        },
+    )
 }
