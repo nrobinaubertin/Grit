@@ -1,0 +1,28 @@
+# Radicale configuration for local development and integration tests of the Grit calendar.
+# run-dev.sh passes the file paths (users, rights, storage) on the command line.
+# For a production server, see README.md.
+
+[auth]
+type = htpasswd
+# Development users only: passwords are stored in plain text
+htpasswd_encryption = plain
+
+[rights]
+type = from_file
+
+[storage]
+type = multifilesystem
+
+[sharing]
+# Map shares (Radicale 3.7+) let a user see another user's calendar in their own home.
+type = csv
+collection_by_map = true
+permit_create_map = true
+default_permissions_create_map = r
+
+[web]
+type = internal
+
+[logging]
+level = info
+mask_passwords = true

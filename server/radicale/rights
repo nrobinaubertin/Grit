@@ -1,0 +1,20 @@
+# Rights for the development server. The first section that matches wins.
+# Shares between users are map shares (see seed-dev.sh), not rules in this file.
+
+# Authenticated users can list the root collection
+[root]
+user: .+
+collection:
+permissions: R
+
+# Each user can read and write their principal collection
+[principal]
+user: .+
+collection: {user}
+permissions: RW
+
+# Each user can read and write their own calendars
+[calendars]
+user: .+
+collection: {user}/[^/]+
+permissions: rw

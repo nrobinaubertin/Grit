@@ -51,6 +51,7 @@ import com.shub39.grit.shared.ui.viewmodel.HabitViewModel
 import com.shub39.grit.shared.ui.viewmodel.MainViewModel
 import com.shub39.grit.shared.ui.viewmodel.SettingsViewModel
 import com.shub39.grit.shared.ui.viewmodel.TasksViewModel
+import org.koin.compose.getKoin
 import org.koin.compose.viewmodel.koinViewModel
 
 @Composable
@@ -62,6 +63,8 @@ fun GritNavDisplay(
     val globalState by globalVM.state.collectAsStateWithLifecycle()
 
     val adaptiveInfo = currentWindowAdaptiveInfoV2()
+    val koin = getKoin()
+    val extraEntries = remember(koin) { koin.getAll<NavEntryContributor>() }
     val topLevelBackStack =
         retain(globalState.startingSection) {
             TopLevelBackStack(
@@ -136,6 +139,8 @@ fun GritNavDisplay(
                                 topLevelBackStack = topLevelBackStack,
                                 globalState = globalState,
                             )
+
+                            extraEntries.forEach { with(it) { entries(topLevelBackStack) } }
                         },
                 )
             }

@@ -151,6 +151,7 @@ dependencies {
     implementation(projects.shared.core)
     implementation(projects.shared.ui)
     implementation(projects.shared.logic)
+    implementation(projects.shared.calendar)
 
     "playImplementation"(libs.purchases)
     "playImplementation"(libs.purchases.ui)

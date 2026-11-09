@@ -1,0 +1,37 @@
+# Libraries used only by the calendar fork modules (:shared:caldav, :shared:calendar).
+# Kept separate from libs.versions.toml so that upstream merges do not conflict.
+
+[versions]
+dav4jvm = "5.0.0"
+ical4j = "4.4.0"
+ktor = "3.6.0"
+work = "2.11.2"
+xpp3 = "1.1.6"
+# ical4j needs Apache Commons. Newer versions use Java APIs that Android API 29 lacks, so DAVx5
+# pins these strict versions. We do the same.
+commons-lang3 = { strictly = "3.15.0" }
+commons-codec = { strictly = "1.17.1" }
+animalsniffer = "2.0.1"
+android-signature = "10_r5"
+junit = "5.14.4"
+# Keep equal to kotlinx-coroutines in libs.versions.toml
+coroutines-test = "1.11.0"
+
+[libraries]
+dav4jvm = { module = "com.github.bitfireAT:dav4jvm", version.ref = "dav4jvm" }
+ical4j = { module = "org.mnode.ical4j:ical4j", version.ref = "ical4j" }
+ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
+ktor-client-auth = { module = "io.ktor:ktor-client-auth", version.ref = "ktor" }
+ktor-client-mock = { module = "io.ktor:ktor-client-mock", version.ref = "ktor" }
+work-runtime = { module = "androidx.work:work-runtime", version.ref = "work" }
+xpp3 = { module = "org.ogce:xpp3", version.ref = "xpp3" }
+commons-lang3 = { module = "org.apache.commons:commons-lang3", version.ref = "commons-lang3" }
+commons-codec = { module = "commons-codec:commons-codec", version.ref = "commons-codec" }
+android-signature = { module = "net.sf.androidscents.signature:android-api-level-29", version.ref = "android-signature" }
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
+junit-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines-test" }
+
+[plugins]
+animalsniffer = { id = "ru.vyarus.animalsniffer", version.ref = "animalsniffer" }

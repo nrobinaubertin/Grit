@@ -16,6 +16,7 @@
  */
 package com.shub39.grit.di
 
+import com.shub39.grit.calendar.di.CalendarModules
 import com.shub39.grit.core.AnalyticsEvent
 import com.shub39.grit.core.GritLogger
 import com.shub39.grit.core.billing.BillingHandler
@@ -37,7 +38,7 @@ import org.koin.core.annotation.Module
 import org.koin.core.annotation.Single
 
 @Configuration
-@Module(includes = [UIModules::class, LogicModules::class])
+@Module(includes = [UIModules::class, LogicModules::class, CalendarModules::class])
 @ComponentScan("com.shub39.grit")
 class GritModules {
     @Single

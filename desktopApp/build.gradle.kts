@@ -38,6 +38,7 @@ kotlin {
             implementation(projects.shared.core)
             implementation(projects.shared.ui)
             implementation(projects.shared.logic)
+            implementation(projects.shared.calendar)
 
             implementation(libs.compose.material3)
             implementation(libs.compose.components.resources)

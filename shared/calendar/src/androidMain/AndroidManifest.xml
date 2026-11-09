@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Calendar fork: merged into both app flavors by the manifest merger. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- CalDAV sync. The foss flavor of upstream Grit has no network access otherwise. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <application android:networkSecurityConfig="@xml/calendar_network_security_config" />
+
+</manifest>

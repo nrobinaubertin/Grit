@@ -42,9 +42,19 @@ dependencyResolutionManagement {
             }
         }
         mavenCentral()
+        // Calendar fork: dav4jvm is only published on JitPack
+        exclusiveContent {
+            forRepository { maven("https://jitpack.io") }
+            filter { includeGroup("com.github.bitfireAT") }
+        }
     }
+    // Calendar fork: separate catalog so that libs.versions.toml stays untouched
+    versionCatalogs { create("calendarLibs") { from(files("gradle/calendar.versions.toml")) } }
 }
 
 include(":androidApp", ":desktopApp")
 
 include(":shared:ui", ":shared:core", ":shared:logic")
+
+// Calendar fork modules
+include(":shared:caldav", ":shared:calendar")

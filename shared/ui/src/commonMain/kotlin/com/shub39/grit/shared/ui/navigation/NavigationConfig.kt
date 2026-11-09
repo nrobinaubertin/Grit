@@ -59,6 +59,7 @@ fun Routes.getTopLevelRoute(): Routes? =
     when (val subType = this.getSubType()) {
         Tasks,
         Habits,
+        CalendarTab,
         Settings -> subType
         else -> null
     }
@@ -68,6 +69,7 @@ fun Routes.getSubType(): Routes =
         in HABIT_ROUTES -> Habits
         in SETTINGS_ROUTES -> Settings
         TaskList -> Tasks
+        is CalendarRoute -> CalendarTab
         else -> this
     }
 
