@@ -64,7 +64,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.shub39.grit.calendar.data.CategoryColors
 import com.shub39.grit.calendar.ui.Formatting
+import com.shub39.grit.calendar.ui.account.CategoryDialog
 import com.shub39.grit.shared.ui.components.GritTimePicker
 import grit.shared.calendar.generated.resources.*
 import java.time.ZoneId
@@ -161,6 +163,11 @@ fun EventEditorScreen(
 
                 if (stage >= 2) {
                     CalendarRow(state) { id -> viewModel.update { it.copy(calendarId = id) } }
+                    CategoryRow(
+                        state = state,
+                        onPick = { name -> viewModel.update { it.copy(category = name) } },
+                        onCreate = viewModel::createCategory,
+                    )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(stringResource(Res.string.all_day), modifier = Modifier.weight(1f))
                         Switch(
@@ -380,15 +387,6 @@ private fun CalendarRow(state: EditorState, onPick: (Long) -> Unit) {
             label = stringResource(Res.string.calendar),
             value = selected?.name.orEmpty(),
             onClick = { if (canChoose) expanded = true },
-            leading = {
-                Box(
-                    Modifier.size(12.dp)
-                        .clip(CircleShape)
-                        .background(
-                            selected?.color?.let { Color(it) } ?: MaterialTheme.colorScheme.primary
-                        )
-                )
-            },
         )
         if (expanded) {
             DropdownMenu(expanded = true, onDismissRequest = { expanded = false }) {
@@ -403,6 +401,78 @@ private fun CalendarRow(state: EditorState, onPick: (Long) -> Unit) {
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ColorDot(argb: Int?, size: Int = 12) {
+    Box(
+        Modifier.size(size.dp)
+            .clip(CircleShape)
+            .background(argb?.let { Color(it) } ?: MaterialTheme.colorScheme.outline)
+    )
+}
+
+@Composable
+private fun CategoryRow(
+    state: EditorState,
+    onPick: (String?) -> Unit,
+    onCreate: (String, String) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    var creating by remember { mutableStateOf(false) }
+    val selected = state.categories.firstOrNull { it.name == state.category }
+    Box {
+        SettingRow(
+            label = stringResource(Res.string.category),
+            value = state.category ?: stringResource(Res.string.no_category),
+            onClick = { expanded = true },
+            leading = { if (state.category != null) ColorDot(selected?.argb) },
+        )
+        if (expanded) {
+            DropdownMenu(expanded = true, onDismissRequest = { expanded = false }) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(Res.string.no_category)) },
+                    onClick = {
+                        onPick(null)
+                        expanded = false
+                    },
+                )
+                for (option in state.categories) {
+                    DropdownMenuItem(
+                        text = { Text(option.name) },
+                        leadingIcon = { ColorDot(option.argb) },
+                        onClick = {
+                            onPick(option.name)
+                            expanded = false
+                        },
+                    )
+                }
+                DropdownMenuItem(
+                    text = { Text(stringResource(Res.string.new_category)) },
+                    leadingIcon = {
+                        Icon(vectorResource(Res.drawable.add), contentDescription = null)
+                    },
+                    onClick = {
+                        expanded = false
+                        creating = true
+                    },
+                )
+            }
+        }
+    }
+    if (creating) {
+        CategoryDialog(
+            title = stringResource(Res.string.new_category),
+            initialName = "",
+            initialColor = CategoryColors.palette.first(),
+            nameEditable = true,
+            onDismiss = { creating = false },
+            onConfirm = { name, color ->
+                onCreate(name, color)
+                creating = false
+            },
+        )
     }
 }
 

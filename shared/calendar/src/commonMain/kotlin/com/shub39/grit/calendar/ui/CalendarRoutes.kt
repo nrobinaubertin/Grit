@@ -26,6 +26,8 @@ import kotlinx.datetime.LocalDate
 data class EventEditor(
     val eventId: Long? = null,
     val date: LocalDate? = null,
+    /** Start hour for a new event, when created from the week view. */
+    val hour: Int? = null,
     val session: Long = System.nanoTime(),
 ) : CalendarRoute
 

@@ -168,10 +168,10 @@ class CalendarStoreTest {
 
     @Test
     fun `calendars on this device keep events without pending uploads`() = runBlocking {
-        val calendar = store.createLocalCalendar("Personal", 0xFF3F51B5.toInt())
+        val calendar = store.createLocalCalendar("Personal")
         assertEquals(true, dao.isLocalCollection(calendar))
         // A second calendar reuses the same local account
-        store.createLocalCalendar("Work", 0xFF009688.toInt())
+        store.createLocalCalendar("Work")
         assertEquals(1, dao.accounts().count { it.local })
 
         val id =
@@ -213,6 +213,49 @@ class CalendarStoreTest {
         )
         store.deleteLocalCalendar(calendar)
         assertTrue(instances("2026-11-01T00:00:00Z", "2026-12-01T00:00:00Z").isEmpty())
+    }
+
+    @Test
+    fun `categories come from events and their color goes back into the events`() = runBlocking {
+        val collectionId = collection()
+        store.applyRemote(
+            collectionId,
+            listOf(
+                RemoteItem(
+                    "https://dav/u/cal/a.ics",
+                    "\"1\"",
+                    ics("a", "DTSTART:20261110T080000Z\nSUMMARY:A\nCATEGORIES:Family\nCOLOR:teal"),
+                ),
+                RemoteItem(
+                    "https://dav/u/cal/b.ics",
+                    "\"2\"",
+                    ics("b", "DTSTART:20261111T080000Z\nSUMMARY:B\nCATEGORIES:Sport"),
+                ),
+            ),
+        )
+        val categories = dao.categoriesFlow().first().associate { it.name to it.color }
+        assertEquals("teal", categories["Family"])
+        // A category without a color gets a stable one from the palette
+        assertTrue(
+            categories.getValue("Sport") in com.shub39.grit.calendar.data.CategoryColors.palette
+        )
+        val row = instances("2026-11-10T00:00:00Z", "2026-11-11T00:00:00Z").single()
+        assertEquals("Family", row.category)
+        assertEquals("teal", row.categoryColor)
+
+        store.setCategoryColor("Family", "crimson")
+        val changed = dao.eventByHref(collectionId, "https://dav/u/cal/a.ics")!!
+        assertTrue(changed.dirty)
+        assertTrue("COLOR:crimson" in changed.ics)
+        assertEquals(
+            "crimson",
+            instances("2026-11-10T00:00:00Z", "2026-11-11T00:00:00Z").single().categoryColor,
+        )
+
+        store.deleteCategory("Sport")
+        val cleared = dao.eventByHref(collectionId, "https://dav/u/cal/b.ics")!!
+        assertEquals(null, cleared.category)
+        assertTrue("CATEGORIES" !in cleared.ics)
     }
 
     @Test

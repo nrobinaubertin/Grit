@@ -39,6 +39,16 @@ import com.shub39.grit.calendar.ui.home.CalendarMode
 import com.shub39.grit.calendar.ui.home.CalendarUiState
 import com.shub39.grit.calendar.ui.home.DayEvent
 import com.shub39.grit.calendar.ui.home.EventDetailsUi
+import com.shub39.grit.calendar.ui.home.MONTH_LANES
+import com.shub39.grit.calendar.ui.home.MonthData
+import com.shub39.grit.calendar.ui.home.WEEK_BAND_LANES
+import com.shub39.grit.calendar.ui.home.WeekData
+import com.shub39.grit.calendar.ui.home.WeekLanes
+import com.shub39.grit.calendar.ui.home.byDay
+import com.shub39.grit.calendar.ui.home.isBandEvent
+import com.shub39.grit.calendar.ui.home.layoutTimed
+import com.shub39.grit.calendar.ui.home.layoutWeek
+import com.shub39.grit.calendar.ui.home.startOfWeek
 import com.shub39.grit.core.interfaces.SettingsDatastore
 import com.shub39.grit.core.settings.Sections
 import java.io.File
@@ -47,11 +57,13 @@ import kotlin.test.Test
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
+import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.YearMonth
 import kotlinx.datetime.atStartOfDayIn
+import kotlinx.datetime.plus
 import org.junit.Assume.assumeTrue
 
 /**
@@ -89,85 +101,133 @@ class ScreenshotTest {
             .atStartOfDayIn(TimeZone.currentSystemDefault())
             .toEpochMilliseconds() + (hour * 60 + minute) * 60_000L
 
+    private var nextId = 1L
+
     private fun event(
-        id: Long,
         title: String,
         day: Int,
         hour: Int,
-        color: Int,
+        hours: Int = 1,
+        category: String? = null,
+        color: Int? = null,
+        allDayUntil: Int? = null,
         canWrite: Boolean = true,
-    ) =
-        DayEvent(
+    ): DayEvent {
+        val id = nextId++
+        val allDay = allDayUntil != null
+        val begin =
+            if (allDay) LocalDate(2026, 11, day).atStartOfDayIn(TimeZone.UTC).toEpochMilliseconds()
+            else at(day, hour)
+        val end =
+            if (allDay)
+                LocalDate(2026, 11, allDayUntil!!)
+                    .plus(DatePeriod(days = 1))
+                    .atStartOfDayIn(TimeZone.UTC)
+                    .toEpochMilliseconds()
+            else at(day, hour + hours)
+        return DayEvent(
             instanceId = id,
             eventId = id,
             title = title,
             location = if (id % 2 == 0L) "Home" else null,
-            begin = at(day, hour),
-            end = at(day, hour + 1),
-            allDay = false,
+            begin = begin,
+            end = end,
+            allDay = allDay,
+            startDay = LocalDate(2026, 11, day),
+            endDay = LocalDate(2026, 11, allDayUntil ?: day),
             originalStart = null,
-            recurring = id == 3L,
+            recurring = title == "Standup",
+            category = category,
             color = color,
             calendarName = if (canWrite) "family" else "alice-personal",
             canWrite = canWrite,
         )
+    }
 
     private val pink = 0xFFE91E63.toInt()
     private val indigo = 0xFF3F51B5.toInt()
     private val teal = 0xFF009688.toInt()
 
-    private val sample =
-        CalendarUiState(
-            month = YearMonth(2026, 11),
-            selectedDate = today,
-            today = today,
-            eventsByDay =
-                mapOf(
-                    today to
-                        listOf(
-                            event(1, "Dentist", 9, 9, indigo, canWrite = false),
-                            event(2, "Groceries", 9, 18, pink),
-                        ),
-                    LocalDate(2026, 11, 12) to listOf(event(3, "Standup", 12, 9, teal)),
-                    LocalDate(2026, 11, 20) to
-                        listOf(event(4, "Dinner", 20, 19, pink), event(5, "Film", 20, 21, indigo)),
-                    LocalDate(2026, 11, 24) to
-                        listOf(
-                            event(6, "Holidays", 24, 0, teal).copy(allDay = true),
-                            event(7, "Breakfast with Paul", 24, 8, pink),
-                            event(8, "Train to Lyon", 24, 10, indigo),
-                            event(9, "Museum", 24, 14, teal),
-                            event(10, "Dinner", 24, 20, pink),
-                        ),
-                    LocalDate(2026, 11, 25) to
-                        listOf(event(6, "Holidays", 24, 0, teal).copy(allDay = true)),
-                    LocalDate(2026, 12, 2) to listOf(event(11, "Next month", 2, 9, indigo)),
-                ),
-            agenda =
-                listOf(
-                    today to
-                        listOf(
-                            event(1, "Dentist", 9, 9, indigo),
-                            event(2, "Groceries", 9, 18, pink),
-                        ),
-                    LocalDate(2026, 11, 12) to listOf(event(3, "Standup", 12, 9, teal)),
-                ),
-            canCreate = true,
-            firstDayOfWeek = DayOfWeek.MONDAY,
+    private val events =
+        listOf(
+            event("Dentist", 9, 9, category = "Health", color = indigo, canWrite = false),
+            event("Groceries", 9, 18, category = "Family", color = pink),
+            event("Standup", 10, 9, category = "Work", color = teal),
+            event("Standup", 11, 9, category = "Work", color = teal),
+            event("Review", 11, 9, hours = 2, category = "Work", color = teal),
+            event("Standup", 12, 9, category = "Work", color = teal),
+            event("Conference in Lyon", 11, 0, allDayUntil = 13, category = "Work", color = teal),
+            event("Dinner", 20, 19, category = "Family", color = pink),
+            event("Film", 20, 21),
+            event("Holidays", 23, 0, allDayUntil = 28, category = "Family", color = pink),
+            event("Breakfast with Paul", 24, 8, category = "Family", color = pink),
+            event("Train to Lyon", 24, 10, category = "Work", color = teal),
+            event("Museum", 24, 14),
+            event("Dinner", 24, 20, category = "Family", color = pink),
         )
 
-    @Test fun month() = shoot("calendar-month") { CalendarHomeScreen(sample, {}, {}, {}, {}) }
+    private val sample: CalendarUiState
+        get() {
+            val first = LocalDate(2026, 9, 24)
+            val last = LocalDate(2027, 1, 8)
+            val weeks = mutableMapOf<LocalDate, WeekLanes>()
+            var week = startOfWeek(first, DayOfWeek.MONDAY)
+            while (week < last) {
+                weeks[week] = layoutWeek(week, events, MONTH_LANES)
+                week = week.plus(DatePeriod(days = 7))
+            }
+            val weekStart = startOfWeek(today, DayOfWeek.MONDAY)
+            return CalendarUiState(
+                month = YearMonth(2026, 11),
+                week = weekStart,
+                selectedDate = today,
+                today = today,
+                monthData = MonthData(byDay(events, first, last), weeks),
+                weeks =
+                    mapOf(
+                        weekStart to
+                            WeekData(
+                                band =
+                                    layoutWeek(
+                                        weekStart,
+                                        events.filter { it.isBandEvent() },
+                                        WEEK_BAND_LANES,
+                                    ),
+                                boxes =
+                                    layoutTimed(weekStart, events, java.time.ZoneId.systemDefault()),
+                            )
+                    ),
+                agenda = byDay(events, today, today.plus(DatePeriod(days = 30))).toList(),
+                canCreate = true,
+                firstDayOfWeek = DayOfWeek.MONDAY,
+            )
+        }
+
+    @Test
+    fun month() = shoot("calendar-month") { CalendarHomeScreen(sample, {}, {}, { _, _ -> }, {}) }
+
+    @Test
+    fun week() =
+        shoot("calendar-week") {
+            CalendarHomeScreen(sample.copy(mode = CalendarMode.Week), {}, {}, { _, _ -> }, {})
+        }
 
     @Test
     fun agenda() =
         shoot("calendar-agenda") {
-            CalendarHomeScreen(sample.copy(mode = CalendarMode.Agenda), {}, {}, {}, {})
+            CalendarHomeScreen(sample.copy(mode = CalendarMode.Agenda), {}, {}, { _, _ -> }, {})
         }
 
     @Test
     fun noCalendars() =
         shoot("calendar-empty") {
-            CalendarHomeScreen(sample.copy(hasCalendars = false, canCreate = false), {}, {}, {}, {})
+            CalendarHomeScreen(
+                sample.copy(hasCalendars = false, canCreate = false),
+                {},
+                {},
+                { _, _ -> },
+                {},
+            )
         }
 
     @Test
@@ -177,14 +237,14 @@ class ScreenshotTest {
                 sample.copy(
                     details =
                         EventDetailsUi(
-                            event = event(3, "Standup", 12, 9, teal),
+                            event = events[2],
                             description = "Daily sync with the team",
                             rrule = "FREQ=WEEKLY",
                         )
                 ),
                 {},
                 {},
-                {},
+                { _, _ -> },
                 {},
             )
         }
@@ -206,7 +266,6 @@ class ScreenshotTest {
                         accountId = account,
                         url = "https://dav/bob/family/",
                         displayName = "family",
-                        color = pink,
                     )
                 )
         }
@@ -245,7 +304,6 @@ class ScreenshotTest {
                     accountId = account,
                     url = "https://dav/bob/work/",
                     displayName = "work",
-                    color = teal,
                 )
             )
             dao.insertCollection(
@@ -253,7 +311,6 @@ class ScreenshotTest {
                     accountId = account,
                     url = "https://dav/bob/family/",
                     displayName = "family",
-                    color = pink,
                 )
             )
             dao.insertCollection(
@@ -267,7 +324,11 @@ class ScreenshotTest {
             )
         }
         val store = CalendarStore(db)
-        runBlocking { store.createLocalCalendar("Personal", indigo) }
+        runBlocking {
+            store.createLocalCalendar("Personal")
+            store.createCategory("Family", "crimson")
+            store.createCategory("Work", "teal")
+        }
         val manager =
             com.shub39.grit.calendar.data.CalendarSyncManager(
                 db,
@@ -301,7 +362,11 @@ class ScreenshotTest {
                 .setQueryCoroutineContext(Dispatchers.IO)
                 .build()
         val store = CalendarStore(db)
-        runBlocking { store.createLocalCalendar("Personal", indigo) }
+        runBlocking {
+            store.createLocalCalendar("Personal")
+            store.createCategory("Family", "crimson")
+            store.createCategory("Work", "teal")
+        }
         val manager =
             com.shub39.grit.calendar.data.CalendarSyncManager(
                 db,

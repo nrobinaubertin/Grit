@@ -53,14 +53,16 @@ class CalendarNavEntries : NavEntryContributor {
                 state = state,
                 onAction = viewModel::onAction,
                 onOpenAccount = { backStack.backStack.add(CalendarAccount) },
-                onCreateEvent = { date -> backStack.backStack.add(EventEditor(date = date)) },
+                onCreateEvent = { date, hour ->
+                    backStack.backStack.add(EventEditor(date = date, hour = hour))
+                },
                 onEditEvent = { id -> backStack.backStack.add(EventEditor(eventId = id)) },
             )
         }
 
         entry<EventEditor>(metadata = verticalTransitionMetadata(TRANSITION_MS)) { route ->
             val viewModel = koinViewModel<EventEditorViewModel>(key = route.toString())
-            LaunchedEffect(route) { viewModel.load(route.eventId, route.date) }
+            LaunchedEffect(route) { viewModel.load(route.eventId, route.date, route.hour) }
             val state by viewModel.state.collectAsStateWithLifecycle()
             EventEditorScreen(
                 state = state,

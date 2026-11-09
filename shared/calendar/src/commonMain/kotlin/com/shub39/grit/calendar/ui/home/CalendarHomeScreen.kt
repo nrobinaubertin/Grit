@@ -41,6 +41,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -73,9 +74,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.shub39.grit.calendar.ui.Formatting
+import com.shub39.grit.shared.ui.components.GritBottomSheet
 import grit.shared.calendar.generated.resources.*
 import java.time.ZoneId
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.YearMonth
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.resources.vectorResource
 
@@ -86,17 +89,18 @@ fun CalendarHomeScreen(
     state: CalendarUiState,
     onAction: (CalendarAction) -> Unit,
     onOpenAccount: () -> Unit,
-    onCreateEvent: (LocalDate) -> Unit,
+    onCreateEvent: (LocalDate, Int?) -> Unit,
     onEditEvent: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LaunchedEffect(Unit) { onAction(CalendarAction.Opened) }
+    var showFilter by remember { mutableStateOf(false) }
 
     // Surface sets the content color, so that texts follow the theme
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Box(modifier = Modifier.fillMaxSize()) {
             Column(modifier = Modifier.fillMaxSize()) {
-                CalendarTopBar(state, onAction, onOpenAccount)
+                CalendarTopBar(state, onAction, onOpenAccount, onFilter = { showFilter = true })
                 val defaultName = stringResource(Res.string.default_local_calendar)
                 when {
                     !state.hasCalendars ->
@@ -113,9 +117,9 @@ fun CalendarHomeScreen(
                             onRefresh = { onAction(CalendarAction.Refresh) },
                             modifier = Modifier.fillMaxSize(),
                         ) {
-                            CalendarContent(state, onAction)
+                            CalendarContent(state, onAction, onCreateEvent)
                         }
-                    else -> CalendarContent(state, onAction)
+                    else -> CalendarContent(state, onAction, onCreateEvent)
                 }
             }
 
@@ -129,8 +133,9 @@ fun CalendarHomeScreen(
                 MediumFloatingActionButton(
                     onClick = {
                         onCreateEvent(
-                            if (state.mode == CalendarMode.Month) state.selectedDate
-                            else state.today
+                            if (state.mode == CalendarMode.Agenda) state.today
+                            else state.selectedDate,
+                            null,
                         )
                     },
                     containerColor = MaterialTheme.colorScheme.tertiaryContainer,
@@ -144,6 +149,14 @@ fun CalendarHomeScreen(
                 }
             }
         }
+    }
+
+    if (showFilter) {
+        CalendarFilterSheet(
+            calendars = state.calendars,
+            onDismiss = { showFilter = false },
+            onToggle = { id, visible -> onAction(CalendarAction.SetCalendarVisible(id, visible)) },
+        )
     }
 
     state.details?.let { details ->
@@ -166,24 +179,45 @@ fun CalendarHomeScreen(
 }
 
 /**
- * Both views stay composed and measured, and only the active one is placed. Switching between them
- * then costs no composition. The inactive view is composed a few frames after the first one, so
- * that opening the tab pays for one view only.
+ * The views stay composed and measured, and only the active one is placed. Switching between them
+ * then costs no composition. The other views are composed a few frames after the first one, so that
+ * opening the tab pays for one view only.
  */
 @Composable
-private fun CalendarContent(state: CalendarUiState, onAction: (CalendarAction) -> Unit) {
-    var both by remember { mutableStateOf(false) }
+private fun CalendarContent(
+    state: CalendarUiState,
+    onAction: (CalendarAction) -> Unit,
+    onCreateEvent: (LocalDate, Int?) -> Unit,
+) {
+    var all by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         repeat(3) { withFrameNanos {} }
-        both = true
+        all = true
     }
     val mode = state.mode
     Layout(
         content = {
-            if (both || mode == CalendarMode.Month) {
+            if (all || mode == CalendarMode.Month) {
                 Box(Modifier.layoutId(CalendarMode.Month)) { MonthView(state, onAction) }
             }
-            if (both || mode == CalendarMode.Agenda) {
+            if (all || mode == CalendarMode.Week) {
+                Box(Modifier.layoutId(CalendarMode.Week)) {
+                    WeekPager(
+                        week = state.week,
+                        selectedDate = state.selectedDate,
+                        today = state.today,
+                        firstDayOfWeek = state.firstDayOfWeek,
+                        weeks = state.weeks,
+                        is24Hr = state.is24Hr,
+                        canCreate = state.canCreate,
+                        onWeekChange = { onAction(CalendarAction.ShowWeek(it)) },
+                        onSelect = { onAction(CalendarAction.SelectDate(it)) },
+                        onOpenEvent = { onAction(CalendarAction.OpenEvent(it)) },
+                        onCreateAt = { date, hour -> onCreateEvent(date, hour) },
+                    )
+                }
+            }
+            if (all || mode == CalendarMode.Agenda) {
                 Box(Modifier.layoutId(CalendarMode.Agenda)) { AgendaView(state, onAction) }
             }
         },
@@ -200,20 +234,33 @@ private fun CalendarTopBar(
     state: CalendarUiState,
     onAction: (CalendarAction) -> Unit,
     onOpenAccount: () -> Unit,
+    onFilter: () -> Unit,
 ) {
     Column {
         TopAppBar(
             title = {
                 Text(
                     text =
-                        if (state.mode == CalendarMode.Month) Formatting.month(state.month)
-                        else stringResource(Res.string.agenda),
+                        when (state.mode) {
+                            CalendarMode.Month -> Formatting.month(state.month)
+                            CalendarMode.Week ->
+                                Formatting.month(YearMonth(state.week.year, state.week.month))
+                            CalendarMode.Agenda -> stringResource(Res.string.agenda)
+                        },
                     fontWeight = FontWeight.Bold,
                 )
             },
             actions = {
                 TextButton(onClick = { onAction(CalendarAction.Today) }) {
                     Text(stringResource(Res.string.today))
+                }
+                if (state.calendars.size > 1) {
+                    IconButton(onClick = onFilter) {
+                        Icon(
+                            imageVector = vectorResource(Res.drawable.filter_list),
+                            contentDescription = stringResource(Res.string.shown_calendars),
+                        )
+                    }
                 }
                 IconButton(onClick = onOpenAccount) {
                     Icon(
@@ -236,8 +283,11 @@ private fun CalendarTopBar(
                     ) {
                         Text(
                             stringResource(
-                                if (mode == CalendarMode.Month) Res.string.month
-                                else Res.string.agenda
+                                when (mode) {
+                                    CalendarMode.Month -> Res.string.month
+                                    CalendarMode.Week -> Res.string.week
+                                    CalendarMode.Agenda -> Res.string.agenda
+                                }
                             )
                         )
                     }
@@ -310,7 +360,7 @@ private fun MonthView(state: CalendarUiState, onAction: (CalendarAction) -> Unit
                 selectedDate = state.selectedDate,
                 today = state.today,
                 firstDayOfWeek = state.firstDayOfWeek,
-                eventsByDay = state.eventsByDay,
+                weeks = state.monthData.weeks,
                 onMonthChange = { onAction(CalendarAction.ShowMonth(it)) },
                 onSelect = { onAction(CalendarAction.SelectDate(it)) },
             )
@@ -431,4 +481,42 @@ internal fun timeText(event: DayEvent, is24Hr: Boolean): String {
     return Formatting.time(event.begin, zone, is24Hr) +
         " – " +
         Formatting.time(event.end, zone, is24Hr)
+}
+
+/** Chooses which calendars the views show. */
+@Composable
+private fun CalendarFilterSheet(
+    calendars: List<CalendarFilterItem>,
+    onDismiss: () -> Unit,
+    onToggle: (Long, Boolean) -> Unit,
+) {
+    GritBottomSheet(onDismissRequest = onDismiss, padding = 16.dp) {
+        Text(
+            stringResource(Res.string.shown_calendars),
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(bottom = 8.dp),
+        )
+        for (calendar in calendars) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier =
+                    Modifier.fillMaxWidth()
+                        .clip(RowShape)
+                        .clickable { onToggle(calendar.id, !calendar.visible) }
+                        .padding(vertical = 4.dp),
+            ) {
+                Checkbox(checked = calendar.visible, onCheckedChange = null)
+                Column(modifier = Modifier.padding(start = 8.dp)) {
+                    Text(calendar.name, style = MaterialTheme.typography.bodyLarge)
+                    if (calendar.local) {
+                        Text(
+                            stringResource(Res.string.on_this_device),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+    }
 }

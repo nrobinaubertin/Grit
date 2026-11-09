@@ -62,7 +62,6 @@ import kotlinx.datetime.plus
 private const val PAGE_RANGE = 20 * 12
 
 private val CELL_HEIGHT = 88.dp
-private const val MAX_EVENT_LINES = 4
 
 /**
  * Swipeable month grid. Each month is one drawing: no composable per day, and labels are drawn on
@@ -75,7 +74,7 @@ internal fun MonthPager(
     selectedDate: LocalDate,
     today: LocalDate,
     firstDayOfWeek: DayOfWeek,
-    eventsByDay: Map<LocalDate, List<DayEvent>>,
+    weeks: Map<LocalDate, WeekLanes>,
     onMonthChange: (YearMonth) -> Unit,
     onSelect: (LocalDate) -> Unit,
     modifier: Modifier = Modifier,
@@ -126,7 +125,7 @@ internal fun MonthPager(
                 selectedDate = selectedDate,
                 today = today,
                 firstDayOfWeek = firstDayOfWeek,
-                eventsByDay = eventsByDay,
+                weeks = weeks,
                 onSelect = onSelect,
             )
         }
@@ -139,11 +138,11 @@ private fun MonthPage(
     selectedDate: LocalDate,
     today: LocalDate,
     firstDayOfWeek: DayOfWeek,
-    eventsByDay: Map<LocalDate, List<DayEvent>>,
+    weeks: Map<LocalDate, WeekLanes>,
     onSelect: (LocalDate) -> Unit,
 ) {
     val days = remember(month, firstDayOfWeek) { gridDays(month, firstDayOfWeek) }
-    val pageEvents = remember(days, eventsByDay) { days.map { eventsByDay[it].orEmpty() } }
+    val rows = remember(days, weeks) { List(6) { weeks[days[it * 7]] ?: WeekLanes.Empty } }
     val currentOnSelect by rememberUpdatedState(onSelect)
 
     Box(
@@ -159,7 +158,7 @@ private fun MonthPage(
             }
     ) {
         SelectionLayer(days.indexOf(selectedDate), Modifier.matchParentSize())
-        MonthDrawing(month, days, pageEvents, today, Modifier.matchParentSize())
+        MonthDrawing(month, days, rows, today, Modifier.matchParentSize())
     }
 }
 
@@ -187,12 +186,15 @@ private fun SelectionLayer(index: Int, modifier: Modifier) {
     )
 }
 
-/** Day numbers and one line per event, with the start of its title. */
+/**
+ * Day numbers, and one line per event with the start of its title. Multi-day events are one bar
+ * over their days.
+ */
 @Composable
 private fun MonthDrawing(
     month: YearMonth,
     days: List<LocalDate>,
-    events: List<List<DayEvent>>,
+    rows: List<WeekLanes>,
     today: LocalDate,
     modifier: Modifier,
 ) {
@@ -207,7 +209,7 @@ private fun MonthDrawing(
                 val numberSize = 12.sp.toPx()
                 val lineSize = 10.sp.toPx()
                 val lineHeight = 14.dp.toPx()
-                val lineGap = 1.dp.toPx()
+                val lineStep = lineHeight + 1.dp.toPx()
                 val todayRadius = 11.dp.toPx()
                 val numberCenter = 2.dp.toPx() + todayRadius
                 val firstLine = numberCenter + todayRadius + 2.dp.toPx()
@@ -218,11 +220,9 @@ private fun MonthDrawing(
                 onDrawBehind {
                     for (index in days.indices) {
                         val date = days[index]
-                        val inMonth = date.month == month.month
                         val left = (index % 7) * cellWidth
                         val top = (index / 7) * cellHeight
                         val center = left + cellWidth / 2
-
                         val isToday = date == today
                         if (isToday) {
                             drawCircle(
@@ -240,50 +240,56 @@ private fun MonthDrawing(
                             color =
                                 when {
                                     isToday -> colors.onPrimary
-                                    inMonth -> colors.onSurface
+                                    date.month == month.month -> colors.onSurface
                                     else -> faded
                                 },
                             sizePx = numberSize,
                             bold = isToday,
                             centered = true,
                         )
-
-                        val dayEvents = events[index]
-                        if (dayEvents.isEmpty()) continue
-                        val shown =
-                            if (dayEvents.size > MAX_EVENT_LINES) MAX_EVENT_LINES - 1
-                            else dayEvents.size
-                        val right = left + cellWidth - inset
-                        var y = top + firstLine
-                        for (i in 0 until shown) {
-                            val event = dayEvents[i]
-                            val base = event.color?.let { Color(it) } ?: colors.primary
-                            val accent = if (inMonth) base else base.copy(alpha = 0.5f)
+                    }
+                    for ((row, lanes) in rows.withIndex()) {
+                        val top = row * cellHeight + firstLine
+                        for (segment in lanes.segments) {
+                            val event = segment.event
+                            val color = event.color?.let { Color(it) } ?: colors.primary
+                            val spanning =
+                                event.allDay ||
+                                    segment.startColumn != segment.endColumn ||
+                                    segment.continuesBefore ||
+                                    segment.continuesAfter
+                            val left =
+                                segment.startColumn * cellWidth +
+                                    if (segment.continuesBefore) 0f else inset
+                            val right =
+                                (segment.endColumn + 1) * cellWidth -
+                                    if (segment.continuesAfter) 0f else inset
+                            val y = top + segment.lane * lineStep
                             drawRoundRect(
-                                color = accent.copy(alpha = if (event.allDay) 0.45f else 0.18f),
-                                topLeft = Offset(left + inset, y),
-                                size = Size(right - left - inset, lineHeight),
+                                color = color.copy(alpha = if (spanning) 0.55f else 0.18f),
+                                topLeft = Offset(left, y),
+                                size = Size(right - left, lineHeight),
                                 cornerRadius = corner,
                             )
-                            drawRect(accent, Offset(left + inset, y), Size(bar, lineHeight))
+                            if (!spanning) drawRect(color, Offset(left, y), Size(bar, lineHeight))
                             painter.draw(
                                 scope = this,
                                 text = event.title,
-                                x = left + inset + bar + inset,
+                                x = left + if (spanning) inset * 2 else bar + inset,
                                 baseline = y + lineHeight * 0.75f,
-                                clipRight = right,
-                                color = if (inMonth) colors.onSurface else faded,
+                                clipRight = right - inset,
+                                color = colors.onSurface,
                                 sizePx = lineSize,
                             )
-                            y += lineHeight + lineGap
                         }
-                        if (dayEvents.size > shown) {
+                        for ((column, count) in lanes.hidden.withIndex()) {
+                            if (count == 0) continue
                             painter.draw(
                                 scope = this,
-                                text = "+${dayEvents.size - shown}",
-                                x = left + inset * 2,
-                                baseline = y + lineHeight * 0.75f,
-                                clipRight = right,
+                                text = "+$count",
+                                x = column * cellWidth + inset * 2,
+                                baseline = top + (MONTH_LANES - 1) * lineStep + lineHeight * 0.75f,
+                                clipRight = (column + 1) * cellWidth,
                                 color = colors.onSurfaceVariant,
                                 sizePx = lineSize,
                             )

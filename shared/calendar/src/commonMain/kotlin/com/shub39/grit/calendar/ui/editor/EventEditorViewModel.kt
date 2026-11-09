@@ -23,6 +23,7 @@ import com.shub39.grit.caldav.ical.EventDraft
 import com.shub39.grit.caldav.ical.IcalTime
 import com.shub39.grit.caldav.ical.toInstant
 import com.shub39.grit.calendar.data.CalendarStore
+import com.shub39.grit.calendar.data.CategoryColors
 import com.shub39.grit.calendar.ui.home.simpleFrequency
 import com.shub39.grit.calendar.ui.home.today
 import com.shub39.grit.core.interfaces.SettingsDatastore
@@ -64,7 +65,10 @@ enum class EditorError {
     SaveFailed,
 }
 
-@Immutable data class CalendarOption(val id: Long, val name: String, val color: Int?)
+@Immutable data class CalendarOption(val id: Long, val name: String)
+
+/** A category with its CSS color name and that color as ARGB. */
+@Immutable data class CategoryOption(val name: String, val cssColor: String, val argb: Int?)
 
 @Immutable
 data class EditorState(
@@ -85,6 +89,8 @@ data class EditorState(
     val reminders: Set<Int> = emptySet(),
     val calendars: List<CalendarOption> = emptyList(),
     val calendarId: Long? = null,
+    val category: String? = null,
+    val categories: List<CategoryOption> = emptyList(),
     val hasExceptions: Boolean = false,
     val is24Hr: Boolean = true,
     val error: EditorError? = null,
@@ -106,17 +112,34 @@ class EventEditorViewModel(
     private var original: Pair<IcalTime, IcalTime>? = null
     private var originalFields: EditorState? = null
 
-    fun load(eventId: Long?, date: LocalDate?) {
+    fun load(eventId: Long?, date: LocalDate?, hour: Int? = null) {
         if (loaded) return
         loaded = true
         this.eventId = eventId
+        // Categories created in the meantime (here or by a sync) show up at once
+        viewModelScope.launch {
+            store.categoriesFlow().collect { list ->
+                _state.update { state ->
+                    state.copy(
+                        categories =
+                            list.map {
+                                CategoryOption(it.name, it.color, CategoryColors.argb(it.color))
+                            }
+                    )
+                }
+            }
+        }
         if (eventId == null) {
             // A new event needs no database read to show its form: show it at once, and fill
             // in the calendar list when it arrives
             val day = date ?: today()
             val now = java.time.LocalTime.now()
             val startTime =
-                if (day == today() && now.hour < 23) LocalTime(now.hour + 1, 0) else LocalTime(9, 0)
+                when {
+                    hour != null -> LocalTime(hour.coerceIn(0, 22), 0)
+                    day == today() && now.hour < 23 -> LocalTime(now.hour + 1, 0)
+                    else -> LocalTime(9, 0)
+                }
             val start = LocalDateTime(day, startTime)
             val end = start.plusHours(1)
             _state.value =
@@ -139,7 +162,7 @@ class EventEditorViewModel(
                         .collectionsFlow()
                         .first()
                         .filter { it.canWrite && it.supportsEvents && it.visible }
-                        .map { CalendarOption(it.id, it.displayName ?: it.url, it.color) }
+                        .map { CalendarOption(it.id, it.displayName ?: it.url) }
                 _state.update {
                     it.copy(
                         calendars = writable,
@@ -202,10 +225,11 @@ class EventEditorViewModel(
                             CalendarOption(
                                 details.collection.id,
                                 details.collection.displayName ?: details.collection.url,
-                                details.collection.color,
                             )
                         ),
                     calendarId = details.collection.id,
+                    category = info.category,
+                    categories = _state.value.categories,
                     hasExceptions = info.hasExceptions,
                     is24Hr = is24Hr,
                 )
@@ -258,6 +282,8 @@ class EventEditorViewModel(
                     if (state.repeat == RepeatChoice.Custom) state.customRule
                     else state.repeat.rule,
                 reminderMinutes = state.reminders.sorted(),
+                category = state.category,
+                color = state.categories.firstOrNull { it.name == state.category }?.cssColor,
             )
         _state.update { it.copy(saving = true) }
         viewModelScope.launch {
@@ -269,6 +295,16 @@ class EventEditorViewModel(
             } catch (_: Exception) {
                 _state.update { it.copy(saving = false, error = EditorError.SaveFailed) }
             }
+        }
+    }
+
+    /** Creates a category and gives it to this event. */
+    fun createCategory(name: String, cssColor: String) {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return
+        viewModelScope.launch {
+            store.createCategory(trimmed, cssColor)
+            _state.update { it.copy(category = trimmed) }
         }
     }
 

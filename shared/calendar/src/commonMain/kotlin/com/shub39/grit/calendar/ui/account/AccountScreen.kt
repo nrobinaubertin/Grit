@@ -63,9 +63,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import com.shub39.grit.calendar.data.CategoryColors
+import com.shub39.grit.calendar.data.db.CategoryEntity
 import com.shub39.grit.calendar.data.db.CollectionEntity
 import com.shub39.grit.calendar.ui.Formatting
-import com.shub39.grit.calendar.ui.home.LOCAL_COLORS
 import grit.shared.calendar.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.resources.vectorResource
@@ -74,6 +75,9 @@ import org.jetbrains.compose.resources.vectorResource
 @Composable
 fun AccountScreen(state: AccountState, viewModel: AccountViewModel, onBack: () -> Unit) {
     var newLocal by remember { mutableStateOf(false) }
+    var newCategory by remember { mutableStateOf(false) }
+    var editCategory by remember { mutableStateOf<CategoryEntity?>(null) }
+    var deleteCategory by remember { mutableStateOf<CategoryEntity?>(null) }
     var deleteLocal by remember { mutableStateOf<CollectionEntity?>(null) }
     var addByUrl by remember { mutableStateOf(false) }
     var confirmRemove by remember { mutableStateOf(false) }
@@ -104,6 +108,12 @@ fun AccountScreen(state: AccountState, viewModel: AccountViewModel, onBack: () -
                     onNew = { newLocal = true },
                     onDelete = { deleteLocal = it },
                 )
+                categorySection(
+                    state,
+                    onNew = { newCategory = true },
+                    onEdit = { editCategory = it },
+                    onDelete = { deleteCategory = it },
+                )
                 item { SectionTitle(stringResource(Res.string.caldav_server)) }
                 if (state.account == null) {
                     item { ConnectForm(state.form, viewModel) }
@@ -121,6 +131,53 @@ fun AccountScreen(state: AccountState, viewModel: AccountViewModel, onBack: () -
     }
 
     if (newLocal) NewLocalCalendarDialog(viewModel, onDismiss = { newLocal = false })
+    if (newCategory) {
+        CategoryDialog(
+            title = stringResource(Res.string.new_category),
+            initialName = "",
+            initialColor = CategoryColors.palette.first(),
+            nameEditable = true,
+            onDismiss = { newCategory = false },
+            onConfirm = { name, color ->
+                viewModel.createCategory(name, color)
+                newCategory = false
+            },
+        )
+    }
+    editCategory?.let { category ->
+        CategoryDialog(
+            title = category.name,
+            initialName = category.name,
+            initialColor = category.color,
+            nameEditable = false,
+            onDismiss = { editCategory = null },
+            onConfirm = { _, color ->
+                viewModel.setCategoryColor(category.name, color)
+                editCategory = null
+            },
+        )
+    }
+    deleteCategory?.let { category ->
+        AlertDialog(
+            onDismissRequest = { deleteCategory = null },
+            text = { Text(stringResource(Res.string.delete_category_confirm, category.name)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.deleteCategory(category.name)
+                        deleteCategory = null
+                    }
+                ) {
+                    Text(stringResource(Res.string.delete), color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteCategory = null }) {
+                    Text(stringResource(Res.string.cancel))
+                }
+            },
+        )
+    }
     deleteLocal?.let { calendar ->
         AlertDialog(
             onDismissRequest = { deleteLocal = null },
@@ -216,6 +273,49 @@ private fun LazyListScope.localSection(
         )
     }
     item { TextButton(onClick = onNew) { Text(stringResource(Res.string.new_local_calendar)) } }
+}
+
+private fun LazyListScope.categorySection(
+    state: AccountState,
+    onNew: () -> Unit,
+    onEdit: (CategoryEntity) -> Unit,
+    onDelete: (CategoryEntity) -> Unit,
+) {
+    item {
+        Column {
+            SectionTitle(stringResource(Res.string.categories))
+            Text(
+                stringResource(Res.string.categories_body),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+    items(state.categories, key = { "category-${it.name}" }) { category ->
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier =
+                    Modifier.fillMaxWidth()
+                        .clickable { onEdit(category) }
+                        .padding(start = 16.dp, top = 4.dp, bottom = 4.dp, end = 4.dp),
+            ) {
+                ColorDot(CategoryColors.argb(category.color))
+                Text(
+                    category.name,
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
+                )
+                IconButton(onClick = { onDelete(category) }) {
+                    Icon(
+                        vectorResource(Res.drawable.delete),
+                        contentDescription = stringResource(Res.string.delete),
+                    )
+                }
+            }
+        }
+    }
+    item { TextButton(onClick = onNew) { Text(stringResource(Res.string.new_category)) } }
 }
 
 private fun LazyListScope.serverSection(
@@ -355,8 +455,7 @@ private fun CalendarRow(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            ColorDot(collection.color)
-            Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
+            Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
                 Text(
                     collection.displayName ?: collection.url,
                     style = MaterialTheme.typography.bodyLarge,
@@ -422,41 +521,81 @@ private fun ColorDot(color: Int?, size: Int = 14) {
     )
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun NewLocalCalendarDialog(viewModel: AccountViewModel, onDismiss: () -> Unit) {
     var name by remember { mutableStateOf("") }
-    var color by remember { mutableStateOf(LOCAL_COLORS.first()) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(Res.string.new_local_calendar)) },
         text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text(stringResource(Res.string.calendar_name)) },
+                singleLine = true,
+            )
+        },
+        confirmButton = {
+            TextButton(
+                enabled = name.isNotBlank(),
+                onClick = {
+                    viewModel.createLocalCalendar(name)
+                    onDismiss()
+                },
+            ) {
+                Text(stringResource(Res.string.create))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(Res.string.cancel)) }
+        },
+    )
+}
+
+/** Name and color of a category. The name cannot change once events use it. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun CategoryDialog(
+    title: String,
+    initialName: String,
+    initialColor: String,
+    nameEditable: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (name: String, color: String) -> Unit,
+) {
+    var name by remember { mutableStateOf(initialName) }
+    var color by remember { mutableStateOf(initialColor) }
+    val outline = MaterialTheme.colorScheme.onSurface
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text(stringResource(Res.string.calendar_name)) },
-                    singleLine = true,
-                )
+                if (nameEditable) {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        label = { Text(stringResource(Res.string.calendar_name)) },
+                        singleLine = true,
+                    )
+                }
                 Text(stringResource(Res.string.color), style = MaterialTheme.typography.labelLarge)
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    for (option in LOCAL_COLORS) {
+                    for (option in (CategoryColors.palette + initialColor).distinct()) {
                         Box(
                             modifier =
                                 Modifier.size(32.dp)
                                     .clip(CircleShape)
-                                    .background(Color(option))
+                                    .background(
+                                        CategoryColors.argb(option)?.let { Color(it) } ?: Color.Gray
+                                    )
                                     .then(
-                                        if (option == color) {
-                                            Modifier.border(
-                                                3.dp,
-                                                MaterialTheme.colorScheme.onSurface,
-                                                CircleShape,
-                                            )
-                                        } else Modifier
+                                        if (option == color)
+                                            Modifier.border(3.dp, outline, CircleShape)
+                                        else Modifier
                                     )
                                     .clickable { color = option }
                         )
@@ -465,14 +604,8 @@ private fun NewLocalCalendarDialog(viewModel: AccountViewModel, onDismiss: () ->
             }
         },
         confirmButton = {
-            TextButton(
-                enabled = name.isNotBlank(),
-                onClick = {
-                    viewModel.createLocalCalendar(name, color)
-                    onDismiss()
-                },
-            ) {
-                Text(stringResource(Res.string.create))
+            TextButton(enabled = name.isNotBlank(), onClick = { onConfirm(name.trim(), color) }) {
+                Text(stringResource(if (nameEditable) Res.string.create else Res.string.save))
             }
         },
         dismissButton = {

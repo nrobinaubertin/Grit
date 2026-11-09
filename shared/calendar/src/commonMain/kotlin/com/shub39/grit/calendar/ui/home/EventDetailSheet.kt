@@ -71,26 +71,34 @@ fun EventDetailSheet(
 
             Text(text = dateLine(event, is24Hr), style = MaterialTheme.typography.bodyLarge)
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier =
-                        Modifier.size(12.dp)
-                            .clip(CircleShape)
-                            .background(
-                                event.color?.let { Color(it) } ?: MaterialTheme.colorScheme.primary
-                            )
-                )
-                Text(
-                    text =
-                        listOfNotNull(
-                                event.calendarName,
-                                if (!event.canWrite) stringResource(Res.string.read_only) else null,
-                            )
-                            .joinToString(" · "),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 8.dp),
-                )
+            Text(
+                text =
+                    listOfNotNull(
+                            event.calendarName,
+                            if (!event.canWrite) stringResource(Res.string.read_only) else null,
+                        )
+                        .joinToString(" · "),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            event.category?.let { category ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier =
+                            Modifier.size(12.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    event.color?.let { Color(it) }
+                                        ?: MaterialTheme.colorScheme.primary
+                                )
+                    )
+                    Text(
+                        text = category,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(start = 8.dp),
+                    )
+                }
             }
 
             details.rrule?.let { DetailLine(Res.drawable.schedule, repeatText(it)) }

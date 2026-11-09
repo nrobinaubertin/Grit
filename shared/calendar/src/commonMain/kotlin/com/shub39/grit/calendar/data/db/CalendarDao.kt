@@ -37,7 +37,9 @@ data class InstanceRow(
     val originalStart: Long?,
     val title: String?,
     val location: String?,
-    val color: Int?,
+    val category: String?,
+    /** CSS color name of the category. */
+    val categoryColor: String?,
     val calendarName: String?,
     val canWrite: Boolean,
     val recurring: Boolean,
@@ -150,11 +152,12 @@ interface CalendarDao {
     @Query(
         """
         SELECT i.id, i.eventId, i.collectionId, i.begin, i.`end`, i.allDay, i.originalStart,
-            i.title, i.location, c.color, c.displayName AS calendarName, c.canWrite,
-            e.recurring
+            i.title, i.location, e.category, cat.color AS categoryColor,
+            c.displayName AS calendarName, c.canWrite, e.recurring
         FROM instance i
         JOIN collection c ON c.id = i.collectionId
         JOIN event e ON e.id = i.eventId
+        LEFT JOIN category cat ON cat.name = e.category
         WHERE c.visible = 1 AND e.deleted = 0 AND i.begin < :to
             AND (i.`end` > :from OR (i.begin = i.`end` AND i.begin >= :from))
         ORDER BY i.begin, i.allDay DESC, i.`end`
@@ -189,6 +192,30 @@ interface CalendarDao {
         """
     )
     suspend fun alarmsBetween(after: Long, until: Long): List<AlarmEntity>
+
+    // --- categories ---
+
+    @Query("SELECT * FROM category ORDER BY name COLLATE NOCASE")
+    fun categoriesFlow(): Flow<List<CategoryEntity>>
+
+    @Query("SELECT * FROM category WHERE name = :name")
+    suspend fun category(name: String): CategoryEntity?
+
+    @Upsert suspend fun upsertCategory(category: CategoryEntity)
+
+    @Query("DELETE FROM category WHERE name = :name") suspend fun deleteCategory(name: String)
+
+    /** Events of a category in calendars that the user may change. */
+    @Query(
+        """
+        SELECT e.* FROM event e JOIN collection c ON c.id = e.collectionId
+        WHERE e.category = :name AND e.deleted = 0 AND c.canWrite = 1
+        """
+    )
+    suspend fun writableEventsWithCategory(name: String): List<EventEntity>
+
+    @Query("SELECT * FROM event WHERE category IS NULL AND deleted = 0")
+    suspend fun eventsWithoutCategory(): List<EventEntity>
 
     // --- conflicts and settings ---
 

@@ -59,7 +59,10 @@ actual class SyncScheduler(context: Context, store: CalendarStore, reminders: Re
             }
         }
         // Upstream can cancel all alarms of the app, so set ours again at every start
-        scope.launch { reminders.reschedule() }
+        scope.launch {
+            store.indexCategories()
+            reminders.reschedule()
+        }
     }
 
     actual fun requestSync() = enqueue(ExistingWorkPolicy.KEEP, 0)

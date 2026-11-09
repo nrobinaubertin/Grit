@@ -23,6 +23,7 @@ import com.shub39.grit.caldav.AuthenticationException
 import com.shub39.grit.calendar.data.CalendarStore
 import com.shub39.grit.calendar.data.CalendarSyncManager
 import com.shub39.grit.calendar.data.db.AccountEntity
+import com.shub39.grit.calendar.data.db.CategoryEntity
 import com.shub39.grit.calendar.data.db.CollectionEntity
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -49,6 +50,7 @@ data class AccountState(
     val collections: List<CollectionEntity> = emptyList(),
     /** Calendars that exist only on this device. */
     val localCalendars: List<CollectionEntity> = emptyList(),
+    val categories: List<CategoryEntity> = emptyList(),
     val form: AccountForm = AccountForm(),
     val syncing: Boolean = false,
     val loaded: Boolean = false,
@@ -62,17 +64,20 @@ class AccountViewModel(
     private val form = MutableStateFlow(AccountForm())
 
     val state: StateFlow<AccountState> =
-        combine(store.accountsFlow(), store.collectionsFlow(), syncManager.running, form) {
-                accounts,
-                collections,
-                running,
-                form ->
+        combine(
+                store.accountsFlow(),
+                store.collectionsFlow(),
+                store.categoriesFlow(),
+                syncManager.running,
+                form,
+            ) { accounts, collections, categories, running, form ->
                 val account = accounts.firstOrNull { !it.local }
                 val local = accounts.firstOrNull { it.local }
                 AccountState(
                     account = account,
                     collections = collections.filter { it.accountId == account?.id },
                     localCalendars = collections.filter { it.accountId == local?.id },
+                    categories = categories,
                     form = form,
                     syncing = running,
                     loaded = true,
@@ -148,8 +153,21 @@ class AccountViewModel(
         }
     }
 
-    fun createLocalCalendar(name: String, color: Int) {
-        viewModelScope.launch { store.createLocalCalendar(name.trim(), color) }
+    fun createLocalCalendar(name: String) {
+        viewModelScope.launch { store.createLocalCalendar(name.trim()) }
+    }
+
+    fun createCategory(name: String, color: String) {
+        if (name.isBlank()) return
+        viewModelScope.launch { store.createCategory(name, color) }
+    }
+
+    fun setCategoryColor(name: String, color: String) {
+        viewModelScope.launch { store.setCategoryColor(name, color) }
+    }
+
+    fun deleteCategory(name: String) {
+        viewModelScope.launch { store.deleteCategory(name) }
     }
 
     fun deleteLocalCalendar(collectionId: Long) {

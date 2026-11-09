@@ -33,10 +33,11 @@ import org.koin.core.annotation.Single
             AlarmEntity::class,
             ConflictEntity::class,
             KeyValueEntity::class,
+            CategoryEntity::class,
         ],
     version = CalendarDatabase.SCHEMA_VERSION,
     exportSchema = true,
-    autoMigrations = [AutoMigration(from = 1, to = 2)],
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3)],
 )
 @ConstructedBy(CalendarDbConstructor::class)
 abstract class CalendarDatabase : RoomDatabase() {
@@ -44,7 +45,7 @@ abstract class CalendarDatabase : RoomDatabase() {
 
     companion object {
         const val DB_NAME = "calendar_database"
-        const val SCHEMA_VERSION = 2
+        const val SCHEMA_VERSION = 3
     }
 }
 

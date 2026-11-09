@@ -25,6 +25,7 @@ import com.shub39.grit.calendar.data.db.AccountEntity
 import com.shub39.grit.calendar.data.db.AlarmEntity
 import com.shub39.grit.calendar.data.db.CalendarDao
 import com.shub39.grit.calendar.data.db.CalendarDatabase
+import com.shub39.grit.calendar.data.db.CategoryEntity
 import com.shub39.grit.calendar.data.db.CollectionEntity
 import com.shub39.grit.calendar.data.db.ConflictEntity
 import com.shub39.grit.calendar.data.db.EventEntity
@@ -82,7 +83,7 @@ class CalendarStore(private val db: CalendarDatabase) {
     // --- calendars on this device ---
 
     /** Creates a calendar that exists only on this device. Returns its ID. */
-    suspend fun createLocalCalendar(name: String, color: Int): Long {
+    suspend fun createLocalCalendar(name: String): Long {
         val account =
             dao.localAccount()?.id
                 ?: dao.upsertAccount(AccountEntity(baseUrl = "", username = "", local = true))
@@ -91,7 +92,6 @@ class CalendarStore(private val db: CalendarDatabase) {
                 accountId = account,
                 url = LOCAL_URL_PREFIX + UUID.randomUUID() + "/",
                 displayName = name,
-                color = color,
                 canWrite = true,
                 syncEnabled = false,
             )
@@ -103,6 +103,61 @@ class CalendarStore(private val db: CalendarDatabase) {
         if (dao.isLocalCollection(collectionId) != true) return
         dao.deleteCollection(collectionId)
         _localChanges.tryEmit(Unit)
+    }
+
+    // --- categories ---
+
+    fun categoriesFlow() = dao.categoriesFlow()
+
+    suspend fun createCategory(name: String, color: String) {
+        dao.upsertCategory(CategoryEntity(name.trim(), color))
+    }
+
+    /**
+     * Changes the color of a category, and writes it into the events of the category so that the
+     * people who share these calendars see it too.
+     */
+    suspend fun setCategoryColor(name: String, color: String) {
+        dao.upsertCategory(CategoryEntity(name, color))
+        for (event in dao.writableEventsWithCategory(name)) {
+            val resource = parseOrNull(event.ics) ?: continue
+            saveLocal(event, resource.withCategory(name, color, clock.now()), notify = false)
+        }
+        _localChanges.tryEmit(Unit)
+    }
+
+    /** Deletes a category and removes it from the events that the user may change. */
+    suspend fun deleteCategory(name: String) {
+        for (event in dao.writableEventsWithCategory(name)) {
+            val resource = parseOrNull(event.ics) ?: continue
+            saveLocal(event, resource.withCategory(null, null, clock.now()), notify = false)
+        }
+        dao.deleteCategory(name)
+        _localChanges.tryEmit(Unit)
+    }
+
+    /** Adds the category of an event from the server, with the event's color if it has one. */
+    private suspend fun registerCategory(info: EventInfo?) {
+        val name = info?.category ?: return
+        val color = CategoryColors.normalize(info.color)
+        val existing = dao.category(name)
+        if (existing == null) {
+            dao.upsertCategory(CategoryEntity(name, color ?: CategoryColors.defaultFor(name)))
+        } else if (color != null && color != existing.color) {
+            dao.upsertCategory(existing.copy(color = color))
+        }
+    }
+
+    /** Fills in the category of events stored before categories existed. Runs once. */
+    suspend fun indexCategories() {
+        if (dao.getValue(CATEGORIES_INDEXED) != null) return
+        for (event in dao.eventsWithoutCategory()) {
+            val info = parseOrNull(event.ics)?.info() ?: continue
+            if (info.category == null) continue
+            dao.updateEvent(event.copy(category = info.category))
+            registerCategory(info)
+        }
+        dao.putValue(KeyValueEntity(CATEGORIES_INDEXED, 1))
     }
 
     // --- expansion window ---
@@ -204,6 +259,7 @@ class CalendarStore(private val db: CalendarDatabase) {
             val existing = dao.eventByHref(collectionId, item.href)
             if (existing?.dirty == true) continue
             val event = fromServer(collectionId, item.href, item.etag, ics, existing)
+            registerCategory(parseOrNull(ics)?.info())
             val id =
                 if (existing == null) {
                     dao.insertEvent(event)
@@ -227,6 +283,7 @@ class CalendarStore(private val db: CalendarDatabase) {
             return
         }
         val event = fromServer(existing.collectionId, remote.href, remote.etag, ics, existing)
+        registerCategory(parseOrNull(ics)?.info())
         dao.updateEvent(event)
         expand(event)
     }
@@ -275,6 +332,7 @@ class CalendarStore(private val db: CalendarDatabase) {
             description = info?.description,
             recurring = info.isRecurring(),
             syncError = if (info == null) "Unreadable iCalendar data" else null,
+            category = info?.category,
         )
     }
 
@@ -299,6 +357,7 @@ class CalendarStore(private val db: CalendarDatabase) {
                 location = draft.location,
                 description = draft.description,
                 recurring = draft.rrule != null,
+                category = draft.category,
             )
         val id = dao.insertEvent(event)
         expand(event.copy(id = id))
@@ -333,7 +392,11 @@ class CalendarStore(private val db: CalendarDatabase) {
         _localChanges.tryEmit(Unit)
     }
 
-    private suspend fun saveLocal(event: EventEntity, resource: EventResource) {
+    private suspend fun saveLocal(
+        event: EventEntity,
+        resource: EventResource,
+        notify: Boolean = true,
+    ) {
         val info = resource.info()
         val updated =
             event.copy(
@@ -345,10 +408,11 @@ class CalendarStore(private val db: CalendarDatabase) {
                 description = info?.description,
                 recurring = info.isRecurring(),
                 syncError = null,
+                category = info?.category,
             )
         dao.updateEvent(updated)
         expand(updated)
-        _localChanges.tryEmit(Unit)
+        if (notify) _localChanges.tryEmit(Unit)
     }
 
     private fun parseOrNull(ics: String): EventResource? =
@@ -360,6 +424,7 @@ class CalendarStore(private val db: CalendarDatabase) {
         /** URL prefix of calendars on this device. They have no server URL. */
         const val LOCAL_URL_PREFIX = "local:"
 
+        private const val CATEGORIES_INDEXED = "categories_indexed"
         private const val WINDOW_START = "window_start"
         private const val WINDOW_END = "window_end"
         private val WINDOW_BEFORE = 92.days

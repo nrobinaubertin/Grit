@@ -36,11 +36,15 @@ actual class ReminderScheduler {
 
 /** Desktop: sync every 30 minutes while the app runs, and 5 seconds after a local change. */
 @Single(createdAtStart = true)
-actual class SyncScheduler(private val manager: CalendarSyncManager, store: CalendarStore) {
+actual class SyncScheduler(
+    private val manager: CalendarSyncManager,
+    private val store: CalendarStore,
+) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     init {
         scope.launch {
+            store.indexCategories()
             while (isActive) {
                 runCatching { manager.syncAll() }
                 delay(30.minutes)

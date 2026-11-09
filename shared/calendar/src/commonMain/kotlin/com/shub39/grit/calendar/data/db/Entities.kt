@@ -114,6 +114,8 @@ data class EventEntity(
     val description: String? = null,
     val recurring: Boolean = false,
     val syncError: String? = null,
+    /** Category name (first CATEGORIES value). Its color is in [CategoryEntity]. */
+    @ColumnInfo(defaultValue = "NULL") val category: String? = null,
 )
 
 /** One occurrence of an event, expanded for a time window. */
@@ -180,6 +182,13 @@ data class ConflictEntity(
     val remoteIcs: String?,
     val createdAt: Long,
 )
+
+/**
+ * An event category. [color] is a CSS color name, because events store it as RFC 7986 COLOR so that
+ * everyone who shares a calendar sees the same color. Synced events add their categories here.
+ */
+@Entity(tableName = "category")
+data class CategoryEntity(@PrimaryKey val name: String, val color: String)
 
 /** Small key-value store for the expansion window and the alarm watermark. */
 @Entity(tableName = "kv") data class KeyValueEntity(@PrimaryKey val key: String, val value: Long)
