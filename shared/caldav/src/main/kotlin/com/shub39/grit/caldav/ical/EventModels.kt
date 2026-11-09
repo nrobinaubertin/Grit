@@ -32,6 +32,10 @@ data class EventInfo(
     val hasExceptions: Boolean,
     /** Display reminders relative to the start, in minutes before the start. */
     val reminderMinutes: List<Int>,
+    /** The first value of CATEGORIES. Grit gives an event at most one category. */
+    val category: String?,
+    /** The RFC 7986 COLOR value, a CSS color name. */
+    val color: String?,
     val cancelled: Boolean,
     val sequence: Int,
     val lastModified: Instant?,
@@ -46,6 +50,9 @@ data class EventDraft(
     val description: String? = null,
     val rrule: String? = null,
     val reminderMinutes: List<Int> = emptyList(),
+    val category: String? = null,
+    /** CSS color name of the category, written as RFC 7986 COLOR so that other users see it. */
+    val color: String? = null,
 )
 
 /** One occurrence of an event in time. */

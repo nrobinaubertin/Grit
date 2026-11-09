@@ -363,6 +363,48 @@ class EventResourceTest {
     }
 
     @Test
+    fun `category and color are read, written and kept`() {
+        val original =
+            ics(
+                """
+                UID:cat
+                DTSTAMP:20260101T000000Z
+                DTSTART:20260310T100000Z
+                CATEGORIES:Family,Holidays
+                COLOR:turquoise
+                """
+            )
+        val info = EventResource.parse(original).info()!!
+        assertEquals("Family", info.category)
+        assertEquals("turquoise", info.color)
+
+        // Editing another field keeps the categories as they are
+        val edited =
+            EventResource.parse(original)
+                .edit(
+                    EventDraft(
+                        summary = "x",
+                        start = info.start,
+                        end = info.end,
+                        category = "Family",
+                        color = "turquoise",
+                    ),
+                    now,
+                )
+        assertTrue("CATEGORIES:Family,Holidays" in edited.toIcs())
+
+        val recolored = EventResource.parse(original).withCategory("Work", "royalblue", now)
+        val text = recolored.toIcs()
+        assertTrue("CATEGORIES:Work" in text)
+        assertTrue("COLOR:royalblue" in text)
+        assertEquals("Work", EventResource.parse(text).info()!!.category)
+
+        val cleared = recolored.withCategory(null, null, now).toIcs()
+        assertFalse("CATEGORIES" in cleared)
+        assertFalse("COLOR:" in cleared)
+    }
+
+    @Test
     fun `generated VTIMEZONE matches java time zone rules`() {
         for (systemId in
             listOf("Europe/Paris", "America/New_York", "Australia/Sydney", "Asia/Tokyo")) {

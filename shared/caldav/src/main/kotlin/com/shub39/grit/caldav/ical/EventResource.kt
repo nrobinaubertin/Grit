@@ -37,13 +37,17 @@ import net.fortuna.ical4j.data.CalendarOutputter
 import net.fortuna.ical4j.model.Calendar
 import net.fortuna.ical4j.model.Component
 import net.fortuna.ical4j.model.Parameter
+import net.fortuna.ical4j.model.ParameterList
 import net.fortuna.ical4j.model.Property
+import net.fortuna.ical4j.model.TextList
 import net.fortuna.ical4j.model.component.VAlarm
 import net.fortuna.ical4j.model.component.VEvent
 import net.fortuna.ical4j.model.component.VTimeZone
 import net.fortuna.ical4j.model.parameter.Related
 import net.fortuna.ical4j.model.parameter.TzId
 import net.fortuna.ical4j.model.property.Action
+import net.fortuna.ical4j.model.property.Categories
+import net.fortuna.ical4j.model.property.Color
 import net.fortuna.ical4j.model.property.DateProperty
 import net.fortuna.ical4j.model.property.Description
 import net.fortuna.ical4j.model.property.DtEnd
@@ -96,6 +100,8 @@ class EventResource private constructor(private val calendar: Calendar) {
                 overrides.isNotEmpty() ||
                     event.getProperties<Property>(Property.EXDATE, Property.RDATE).isNotEmpty(),
             reminderMinutes = event.simpleReminders().map { it.second }.sorted(),
+            category = event.category(),
+            color = event.text(Color.PROPERTY_NAME),
             cancelled = event.isCancelled(),
             sequence =
                 event.getProperty<Sequence>(Property.SEQUENCE).map { it.sequenceNo }.orElse(0),
@@ -181,6 +187,18 @@ class EventResource private constructor(private val calendar: Calendar) {
         }
         event.touch(now, bumpSequence = true)
         copy.addMissingTimeZones()
+        return copy
+    }
+
+    /**
+     * Sets the category and its color on the master event, for example after the user changed the
+     * color of a category. Everything else stays as it is.
+     */
+    fun withCategory(category: String?, color: String?, now: Instant): EventResource {
+        val copy = parse(toIcs())
+        val event = copy.master ?: throw IllegalStateException("No master event")
+        event.setCategory(category, color)
+        event.touch(now, bumpSequence = false)
         return copy
     }
 
@@ -292,6 +310,18 @@ private fun VEvent.recurrenceIdProperty(): RecurrenceId<Temporal>? =
     getProperty<RecurrenceId<Temporal>>(Property.RECURRENCE_ID).orElse(null)
 
 private fun DateProperty<*>.tzId(): String? = getParameter<TzId>(Parameter.TZID).orElse(null)?.value
+
+/** The first category. Grit gives an event at most one; other clients may set several. */
+private fun VEvent.category(): String? =
+    getProperty<Categories>(Property.CATEGORIES).orElse(null)?.categories?.texts?.firstOrNull {
+        it.isNotBlank()
+    }
+
+private fun VEvent.setCategory(category: String?, color: String?) {
+    removeAll<VEvent>(Property.CATEGORIES, Color.PROPERTY_NAME)
+    if (category != null) add<VEvent>(Categories(TextList(listOf(category))))
+    if (color != null) add<VEvent>(Color(ParameterList(), color))
+}
 
 private fun VEvent.isCancelled(): Boolean =
     text(Property.STATUS).equals("CANCELLED", ignoreCase = true)
@@ -498,6 +528,9 @@ private fun VEvent.applyDraft(draft: EventDraft, previous: EventInfo?) {
     if (previous?.rrule != draft.rrule) {
         removeAll<VEvent>(Property.RRULE)
         if (draft.rrule != null) add<VEvent>(RRule<Temporal>(draft.rrule))
+    }
+    if (previous?.category != draft.category || previous?.color != draft.color) {
+        setCategory(draft.category, draft.color)
     }
     if (previous?.reminderMinutes != draft.reminderMinutes.sorted()) {
         simpleReminders().forEach { (alarm, _) -> remove<VEvent>(alarm) }
