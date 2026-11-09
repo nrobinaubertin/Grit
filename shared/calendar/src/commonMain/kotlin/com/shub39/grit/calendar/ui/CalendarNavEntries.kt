@@ -39,6 +39,9 @@ import com.shub39.grit.shared.ui.navigation.verticalTransitionMetadata
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.annotation.Single
 
+/** Sub-screens open faster than the upstream default of 500 ms. */
+private const val TRANSITION_MS = 300
+
 /** Adds the calendar screens to the app navigation. */
 @Single(binds = [NavEntryContributor::class])
 class CalendarNavEntries : NavEntryContributor {
@@ -55,7 +58,7 @@ class CalendarNavEntries : NavEntryContributor {
             )
         }
 
-        entry<EventEditor>(metadata = verticalTransitionMetadata()) { route ->
+        entry<EventEditor>(metadata = verticalTransitionMetadata(TRANSITION_MS)) { route ->
             val viewModel = koinViewModel<EventEditorViewModel>(key = route.toString())
             LaunchedEffect(route) { viewModel.load(route.eventId, route.date) }
             val state by viewModel.state.collectAsStateWithLifecycle()
@@ -67,7 +70,7 @@ class CalendarNavEntries : NavEntryContributor {
             )
         }
 
-        entry<CalendarAccount>(metadata = horizontalTransitionMetadata()) {
+        entry<CalendarAccount>(metadata = horizontalTransitionMetadata(TRANSITION_MS)) {
             val viewModel = koinViewModel<AccountViewModel>()
             val state by viewModel.state.collectAsStateWithLifecycle()
             AccountScreen(state = state, viewModel = viewModel, onBack = { backStack.removeLast() })

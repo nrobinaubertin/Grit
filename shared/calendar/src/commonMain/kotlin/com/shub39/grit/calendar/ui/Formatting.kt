@@ -22,38 +22,51 @@ import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalTime
 import kotlinx.datetime.YearMonth
 import kotlinx.datetime.toJavaLocalDate
 
-/** Date and time texts in the device language. */
+/**
+ * Date and time texts in the device language. Formatters are cached per pattern and language,
+ * because building one parses its pattern, and lists call these functions for every row.
+ */
 object Formatting {
     private val locale: Locale
         get() = Locale.getDefault()
 
+    private val cache = ConcurrentHashMap<Pair<String, Locale>, DateTimeFormatter>()
+
+    private fun pattern(pattern: String): DateTimeFormatter =
+        cache.getOrPut(pattern to locale) { DateTimeFormatter.ofPattern(pattern, locale) }
+
+    private fun localized(date: FormatStyle, time: FormatStyle?): DateTimeFormatter =
+        cache.getOrPut("localized:$date:$time" to locale) {
+            val formatter =
+                if (time == null) DateTimeFormatter.ofLocalizedDate(date)
+                else DateTimeFormatter.ofLocalizedDateTime(date, time)
+            formatter.withLocale(locale)
+        }
+
+    private fun timePattern(is24Hr: Boolean) = pattern(if (is24Hr) "HH:mm" else "h:mm a")
+
     fun time(epochMillis: Long, zone: ZoneId, is24Hr: Boolean): String =
-        Instant.ofEpochMilli(epochMillis)
-            .atZone(zone)
-            .format(DateTimeFormatter.ofPattern(if (is24Hr) "HH:mm" else "h:mm a", locale))
+        Instant.ofEpochMilli(epochMillis).atZone(zone).format(timePattern(is24Hr))
 
     fun time(time: LocalTime, is24Hr: Boolean): String =
-        java.time.LocalTime.of(time.hour, time.minute)
-            .format(DateTimeFormatter.ofPattern(if (is24Hr) "HH:mm" else "h:mm a", locale))
+        java.time.LocalTime.of(time.hour, time.minute).format(timePattern(is24Hr))
 
     /** For example "Monday 9 November". */
-    fun dayTitle(date: LocalDate): String =
-        date.toJavaLocalDate().format(DateTimeFormatter.ofPattern("EEEE d MMMM", locale))
+    fun dayTitle(date: LocalDate): String = date.toJavaLocalDate().format(pattern("EEEE d MMMM"))
 
     fun dateMedium(date: LocalDate): String =
-        date
-            .toJavaLocalDate()
-            .format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale))
+        date.toJavaLocalDate().format(localized(FormatStyle.MEDIUM, null))
 
     /** For example "November 2026". */
     fun month(month: YearMonth): String =
         java.time.YearMonth.of(month.year, month.month.ordinal + 1)
-            .format(DateTimeFormatter.ofPattern("LLLL yyyy", locale))
+            .format(pattern("LLLL yyyy"))
             .replaceFirstChar { it.titlecase(locale) }
 
     /** Short weekday name, for example "Mon". */
@@ -64,10 +77,7 @@ object Formatting {
     fun dateTime(epochMillis: Long): String =
         Instant.ofEpochMilli(epochMillis)
             .atZone(ZoneId.systemDefault())
-            .format(
-                DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
-                    .withLocale(locale)
-            )
+            .format(localized(FormatStyle.MEDIUM, FormatStyle.SHORT))
 
     /** All-day instances are stored at midnight UTC. */
     fun allDayDate(epochMillis: Long): java.time.LocalDate =

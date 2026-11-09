@@ -110,36 +110,44 @@ class EventEditorViewModel(
         if (loaded) return
         loaded = true
         this.eventId = eventId
+        if (eventId == null) {
+            // A new event needs no database read to show its form: show it at once, and fill
+            // in the calendar list when it arrives
+            val day = date ?: today()
+            val now = java.time.LocalTime.now()
+            val startTime =
+                if (day == today() && now.hour < 23) LocalTime(now.hour + 1, 0) else LocalTime(9, 0)
+            val start = LocalDateTime(day, startTime)
+            val end = start.plusHours(1)
+            _state.value =
+                EditorState(
+                    loading = false,
+                    isNew = true,
+                    startDate = start.date,
+                    startTime = start.time,
+                    endDate = end.date,
+                    endTime = end.time,
+                    reminders = setOf(10),
+                )
+            originalFields = _state.value
+        }
         viewModelScope.launch {
             val is24Hr = settings.getIs24Hr().first()
-            val collections = store.collectionsFlow().first()
-            val writable =
-                collections
-                    .filter { it.canWrite && it.supportsEvents && it.visible }
-                    .map { CalendarOption(it.id, it.displayName ?: it.url, it.color) }
             if (eventId == null) {
-                val day = date ?: today()
-                val now = java.time.LocalTime.now()
-                val startTime =
-                    if (day == today() && now.hour < 23) LocalTime(now.hour + 1, 0)
-                    else LocalTime(9, 0)
-                val start = LocalDateTime(day, startTime)
-                val end = start.plusHours(1)
-                _state.value =
-                    EditorState(
-                        loading = false,
-                        isNew = true,
-                        startDate = start.date,
-                        startTime = start.time,
-                        endDate = end.date,
-                        endTime = end.time,
-                        reminders = setOf(10),
+                val writable =
+                    store
+                        .collectionsFlow()
+                        .first()
+                        .filter { it.canWrite && it.supportsEvents && it.visible }
+                        .map { CalendarOption(it.id, it.displayName ?: it.url, it.color) }
+                _state.update {
+                    it.copy(
                         calendars = writable,
-                        calendarId = writable.firstOrNull()?.id,
+                        calendarId = it.calendarId ?: writable.firstOrNull()?.id,
                         is24Hr = is24Hr,
-                        error = if (writable.isEmpty()) EditorError.NoCalendar else null,
+                        error = if (writable.isEmpty()) EditorError.NoCalendar else it.error,
                     )
-                originalFields = _state.value
+                }
                 return@launch
             }
             val details = store.details(eventId) ?: return@launch

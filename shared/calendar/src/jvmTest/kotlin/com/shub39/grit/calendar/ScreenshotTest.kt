@@ -131,6 +131,17 @@ class ScreenshotTest {
                     LocalDate(2026, 11, 12) to listOf(event(3, "Standup", 12, 9, teal)),
                     LocalDate(2026, 11, 20) to
                         listOf(event(4, "Dinner", 20, 19, pink), event(5, "Film", 20, 21, indigo)),
+                    LocalDate(2026, 11, 24) to
+                        listOf(
+                            event(6, "Holidays", 24, 0, teal).copy(allDay = true),
+                            event(7, "Breakfast with Paul", 24, 8, pink),
+                            event(8, "Train to Lyon", 24, 10, indigo),
+                            event(9, "Museum", 24, 14, teal),
+                            event(10, "Dinner", 24, 20, pink),
+                        ),
+                    LocalDate(2026, 11, 25) to
+                        listOf(event(6, "Holidays", 24, 0, teal).copy(allDay = true)),
+                    LocalDate(2026, 12, 2) to listOf(event(11, "Next month", 2, 9, indigo)),
                 ),
             agenda =
                 listOf(

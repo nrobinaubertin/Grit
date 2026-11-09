@@ -1,0 +1,8 @@
+# Calendar fork: compile the calendar screens and the sync code ahead of time at install, so that
+# slow phones do not run them in the interpreter the first times.
+HSPLcom/shub39/grit/calendar/**->**(**)**
+Lcom/shub39/grit/calendar/**;
+HSPLcom/shub39/grit/caldav/**->**(**)**
+Lcom/shub39/grit/caldav/**;
+HSPLgrit/shared/calendar/generated/resources/**->**(**)**
+Lgrit/shared/calendar/generated/resources/**;

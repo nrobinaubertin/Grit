@@ -29,7 +29,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -40,7 +39,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.FloatingActionButtonDefaults
@@ -59,27 +57,29 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.kizitonwose.calendar.compose.HorizontalCalendar
-import com.kizitonwose.calendar.compose.rememberCalendarState
-import com.kizitonwose.calendar.core.CalendarDay
-import com.kizitonwose.calendar.core.DayPosition
 import com.shub39.grit.calendar.ui.Formatting
-import com.shub39.grit.shared.ui.habit.daysStartingFrom
 import grit.shared.calendar.generated.resources.*
 import java.time.ZoneId
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.datetime.LocalDate
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.resources.vectorResource
+
+private val RowShape = RoundedCornerShape(16.dp)
 
 @Composable
 fun CalendarHomeScreen(
@@ -165,11 +165,33 @@ fun CalendarHomeScreen(
     }
 }
 
+/**
+ * Both views stay composed and measured, and only the active one is placed. Switching between them
+ * then costs no composition. The inactive view is composed a few frames after the first one, so
+ * that opening the tab pays for one view only.
+ */
 @Composable
 private fun CalendarContent(state: CalendarUiState, onAction: (CalendarAction) -> Unit) {
-    when (state.mode) {
-        CalendarMode.Month -> MonthView(state, onAction)
-        CalendarMode.Agenda -> AgendaView(state, onAction)
+    var both by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        repeat(3) { withFrameNanos {} }
+        both = true
+    }
+    val mode = state.mode
+    Layout(
+        content = {
+            if (both || mode == CalendarMode.Month) {
+                Box(Modifier.layoutId(CalendarMode.Month)) { MonthView(state, onAction) }
+            }
+            if (both || mode == CalendarMode.Agenda) {
+                Box(Modifier.layoutId(CalendarMode.Agenda)) { AgendaView(state, onAction) }
+            }
+        },
+        modifier = Modifier.fillMaxSize(),
+    ) { measurables, constraints ->
+        val placeables = measurables.associate { it.layoutId to it.measure(constraints) }
+        val active = placeables[mode]
+        layout(constraints.maxWidth, constraints.maxHeight) { active?.place(0, 0) }
     }
 }
 
@@ -280,57 +302,20 @@ private fun EmptyPrompt(onCreateLocal: () -> Unit, onConnect: () -> Unit) {
 
 @Composable
 private fun MonthView(state: CalendarUiState, onAction: (CalendarAction) -> Unit) {
-    val calendarState =
-        rememberCalendarState(
-            startMonth = state.today.let { kotlinx.datetime.YearMonth(it.year - 20, 1) },
-            endMonth = state.today.let { kotlinx.datetime.YearMonth(it.year + 20, 12) },
-            firstVisibleMonth = state.month,
-            firstDayOfWeek = state.firstDayOfWeek,
-        )
-
-    // Swiping the grid changes the month, and "Today" scrolls the grid back
-    LaunchedEffect(calendarState) {
-        snapshotFlow { calendarState.firstVisibleMonth.yearMonth }
-            .distinctUntilChanged()
-            .collect { onAction(CalendarAction.ShowMonth(it)) }
-    }
-    LaunchedEffect(state.month) {
-        if (calendarState.firstVisibleMonth.yearMonth != state.month) {
-            calendarState.animateScrollToMonth(state.month)
-        }
-    }
-
     val selectedEvents = state.eventsByDay[state.selectedDate].orEmpty()
     LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 120.dp)) {
-        item {
-            HorizontalCalendar(
-                state = calendarState,
-                contentPadding = PaddingValues(horizontal = 8.dp),
-                monthHeader = {
-                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                        for (day in daysStartingFrom(state.firstDayOfWeek)) {
-                            Text(
-                                text = Formatting.weekday(day),
-                                modifier = Modifier.weight(1f),
-                                textAlign = TextAlign.Center,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                },
-                dayContent = { day ->
-                    DayCell(
-                        day = day,
-                        selected = day.date == state.selectedDate,
-                        today = day.date == state.today,
-                        events = state.eventsByDay[day.date].orEmpty(),
-                        onClick = { onAction(CalendarAction.SelectDate(day.date)) },
-                    )
-                },
+        item(key = "grid") {
+            MonthPager(
+                month = state.month,
+                selectedDate = state.selectedDate,
+                today = state.today,
+                firstDayOfWeek = state.firstDayOfWeek,
+                eventsByDay = state.eventsByDay,
+                onMonthChange = { onAction(CalendarAction.ShowMonth(it)) },
+                onSelect = { onAction(CalendarAction.SelectDate(it)) },
             )
         }
-        item {
+        item(key = "title") {
             Text(
                 text = Formatting.dayTitle(state.selectedDate),
                 style = MaterialTheme.typography.titleMedium,
@@ -338,65 +323,13 @@ private fun MonthView(state: CalendarUiState, onAction: (CalendarAction) -> Unit
             )
         }
         if (selectedEvents.isEmpty()) {
-            item { EmptyDay() }
+            item(key = "empty") { EmptyDay() }
         } else {
             items(selectedEvents, key = { it.instanceId }) { event ->
                 EventRow(
                     event,
                     state.is24Hr,
                     onClick = { onAction(CalendarAction.OpenEvent(event)) },
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun DayCell(
-    day: CalendarDay,
-    selected: Boolean,
-    today: Boolean,
-    events: List<DayEvent>,
-    onClick: () -> Unit,
-) {
-    val inMonth = day.position == DayPosition.MonthDate
-    val colors = MaterialTheme.colorScheme
-    Column(
-        modifier =
-            Modifier.aspectRatio(0.9f)
-                .padding(2.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(
-                    when {
-                        selected -> colors.primaryContainer
-                        today -> colors.surfaceContainerHigh
-                        else -> Color.Transparent
-                    }
-                )
-                .clickable(onClick = onClick),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Text(
-            text = day.date.day.toString(),
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = if (today) FontWeight.Bold else FontWeight.Normal,
-            color =
-                when {
-                    selected -> colors.onPrimaryContainer
-                    today -> colors.primary
-                    inMonth -> colors.onSurface
-                    else -> colors.onSurface.copy(alpha = 0.38f)
-                },
-        )
-        Spacer(Modifier.height(3.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.height(6.dp)) {
-            for (event in events.take(3)) {
-                Box(
-                    modifier =
-                        Modifier.size(5.dp)
-                            .clip(CircleShape)
-                            .background(event.color?.let { Color(it) } ?: colors.primary)
                 )
             }
         }
@@ -457,7 +390,7 @@ internal fun EventRow(event: DayEvent, is24Hr: Boolean, onClick: () -> Unit) {
         modifier =
             Modifier.fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 3.dp)
-                .clip(RoundedCornerShape(16.dp))
+                .clip(RowShape)
                 .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                 .clickable(onClick = onClick)
                 .height(androidx.compose.foundation.layout.IntrinsicSize.Min),

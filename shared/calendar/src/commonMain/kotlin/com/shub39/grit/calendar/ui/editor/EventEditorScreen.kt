@@ -16,27 +16,30 @@
  */
 package com.shub39.grit.calendar.ui.editor
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExposedDropdownMenuAnchorType
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -51,11 +54,15 @@ import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.shub39.grit.calendar.ui.Formatting
 import com.shub39.grit.shared.ui.components.GritTimePicker
@@ -71,8 +78,11 @@ import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.resources.vectorResource
 
 private val REMINDER_PRESETS = listOf(0, 5, 10, 15, 30, 60, 120, 1440)
+private val ValueShape = RoundedCornerShape(8.dp)
 
-@OptIn(ExperimentalLayoutApi::class)
+/** Number of steps in which the form is built, one per frame. */
+private const val STAGES = 4
+
 @Composable
 fun EventEditorScreen(
     state: EditorState,
@@ -83,10 +93,21 @@ fun EventEditorScreen(
     val requestPermission = rememberNotificationPermissionRequest()
     LaunchedEffect(state.saved) { if (state.saved) onClose() }
 
+    // Build the form over several frames, top fields first: on a slow phone, one frame with the
+    // whole form would stall the opening animation
+    var stage by remember { mutableIntStateOf(1) }
+    LaunchedEffect(Unit) {
+        while (stage < STAGES) {
+            withFrameNanos {}
+            stage++
+        }
+    }
+
     var pickStartDate by remember { mutableStateOf(false) }
     var pickEndDate by remember { mutableStateOf(false) }
     var pickStartTime by remember { mutableStateOf(false) }
     var pickEndTime by remember { mutableStateOf(false) }
+    var pickReminders by remember { mutableStateOf(false) }
 
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(modifier = Modifier.fillMaxSize().imePadding()) {
@@ -119,7 +140,6 @@ fun EventEditorScreen(
                     }
                 },
             )
-            if (state.loading) return@Column
 
             Column(
                 modifier =
@@ -127,7 +147,7 @@ fun EventEditorScreen(
                         .verticalScroll(rememberScrollState())
                         .padding(horizontal = 16.dp)
                         .navigationBarsPadding(),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 state.error?.let { ErrorText(it) }
 
@@ -139,91 +159,84 @@ fun EventEditorScreen(
                     modifier = Modifier.fillMaxWidth(),
                 )
 
-                CalendarPicker(state, enabled = state.isNew) { id ->
-                    viewModel.update { it.copy(calendarId = id) }
-                }
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(Res.string.all_day), modifier = Modifier.weight(1f))
-                    Switch(
-                        checked = state.allDay,
-                        onCheckedChange = { checked ->
-                            viewModel.update { it.copy(allDay = checked) }
-                        },
-                    )
-                }
-
-                DateTimeRow(
-                    label = stringResource(Res.string.starts),
-                    date = state.startDate,
-                    time = state.startTime.takeIf { !state.allDay },
-                    is24Hr = state.is24Hr,
-                    onDate = { pickStartDate = true },
-                    onTime = { pickStartTime = true },
-                )
-                DateTimeRow(
-                    label = stringResource(Res.string.ends),
-                    date = state.endDate,
-                    time = state.endTime.takeIf { !state.allDay },
-                    is24Hr = state.is24Hr,
-                    onDate = { pickEndDate = true },
-                    onTime = { pickEndTime = true },
-                )
-                if (!state.allDay && state.zoneId != ZoneId.systemDefault().id) {
-                    Text(
-                        text = stringResource(Res.string.time_zone, state.zoneId),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-
-                RepeatPicker(state) { choice -> viewModel.update { it.copy(repeat = choice) } }
-                if (viewModel.changesSeries(state)) {
-                    Text(
-                        text = stringResource(Res.string.series_warning),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-
-                Text(
-                    stringResource(Res.string.reminders),
-                    style = MaterialTheme.typography.titleSmall,
-                )
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val presets = (REMINDER_PRESETS + state.reminders).distinct().sorted()
-                    for (minutes in presets) {
-                        val selected = minutes in state.reminders
-                        FilterChip(
-                            selected = selected,
-                            onClick = {
-                                viewModel.update {
-                                    it.copy(
-                                        reminders =
-                                            if (selected) it.reminders - minutes
-                                            else it.reminders + minutes
-                                    )
-                                }
+                if (stage >= 2) {
+                    CalendarRow(state) { id -> viewModel.update { it.copy(calendarId = id) } }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(stringResource(Res.string.all_day), modifier = Modifier.weight(1f))
+                        Switch(
+                            checked = state.allDay,
+                            onCheckedChange = { checked ->
+                                viewModel.update { it.copy(allDay = checked) }
                             },
-                            label = { Text(reminderLabel(minutes)) },
+                        )
+                    }
+                    DateTimeRow(
+                        label = stringResource(Res.string.starts),
+                        date = state.startDate,
+                        time = state.startTime.takeIf { !state.allDay },
+                        is24Hr = state.is24Hr,
+                        onDate = { pickStartDate = true },
+                        onTime = { pickStartTime = true },
+                    )
+                    DateTimeRow(
+                        label = stringResource(Res.string.ends),
+                        date = state.endDate,
+                        time = state.endTime.takeIf { !state.allDay },
+                        is24Hr = state.is24Hr,
+                        onDate = { pickEndDate = true },
+                        onTime = { pickEndTime = true },
+                    )
+                    if (!state.allDay && state.zoneId != ZoneId.systemDefault().id) {
+                        Text(
+                            text = stringResource(Res.string.time_zone, state.zoneId),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
 
-                OutlinedTextField(
-                    value = state.location,
-                    onValueChange = { value -> viewModel.update { it.copy(location = value) } },
-                    label = { Text(stringResource(Res.string.location)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                OutlinedTextField(
-                    value = state.description,
-                    onValueChange = { value -> viewModel.update { it.copy(description = value) } },
-                    label = { Text(stringResource(Res.string.description)) },
-                    minLines = 3,
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp),
-                )
+                if (stage >= 3) {
+                    HorizontalDivider()
+                    RepeatRow(state) { choice -> viewModel.update { it.copy(repeat = choice) } }
+                    if (viewModel.changesSeries(state)) {
+                        Text(
+                            text = stringResource(Res.string.series_warning),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                    SettingRow(
+                        label = stringResource(Res.string.reminders),
+                        value =
+                            if (state.reminders.isEmpty()) "—"
+                            else
+                                state.reminders
+                                    .sorted()
+                                    .map { reminderLabel(it) }
+                                    .joinToString(", "),
+                        onClick = { pickReminders = true },
+                    )
+                    HorizontalDivider()
+                }
+
+                if (stage >= 4) {
+                    OutlinedTextField(
+                        value = state.location,
+                        onValueChange = { value -> viewModel.update { it.copy(location = value) } },
+                        label = { Text(stringResource(Res.string.location)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = state.description,
+                        onValueChange = { value ->
+                            viewModel.update { it.copy(description = value) }
+                        },
+                        label = { Text(stringResource(Res.string.description)) },
+                        minLines = 3,
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp),
+                    )
+                }
             }
         }
     }
@@ -266,6 +279,16 @@ fun EventEditorScreen(
             },
         )
     }
+    if (pickReminders) {
+        RemindersDialog(
+            selected = state.reminders,
+            onDismiss = { pickReminders = false },
+            onConfirm = { reminders ->
+                viewModel.update { it.copy(reminders = reminders) }
+                pickReminders = false
+            },
+        )
+    }
 }
 
 @Composable
@@ -286,6 +309,20 @@ private fun ErrorText(error: EditorError) {
     )
 }
 
+/** A clickable value, lighter than a chip or a text field. */
+@Composable
+private fun ValueText(text: String, onClick: () -> Unit) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodyLarge,
+        modifier =
+            Modifier.clip(ValueShape)
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .clickable(onClick = onClick)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+    )
+}
+
 @Composable
 private fun DateTimeRow(
     label: String,
@@ -300,10 +337,138 @@ private fun DateTimeRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(label, modifier = Modifier.weight(1f))
-        AssistChip(onClick = onDate, label = { Text(Formatting.dateMedium(date)) })
-        if (time != null)
-            AssistChip(onClick = onTime, label = { Text(Formatting.time(time, is24Hr)) })
+        ValueText(Formatting.dateMedium(date), onDate)
+        if (time != null) ValueText(Formatting.time(time, is24Hr), onTime)
     }
+}
+
+/** A label and a value; a click opens a picker. */
+@Composable
+private fun SettingRow(
+    label: String,
+    value: String,
+    onClick: () -> Unit,
+    leading: (@Composable () -> Unit)? = null,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier =
+            Modifier.fillMaxWidth()
+                .clip(ValueShape)
+                .clickable(onClick = onClick)
+                .padding(vertical = 12.dp),
+    ) {
+        Text(label, modifier = Modifier.weight(1f))
+        leading?.invoke()
+        Text(
+            value,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(start = 8.dp),
+        )
+    }
+}
+
+@Composable
+private fun CalendarRow(state: EditorState, onPick: (Long) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    val selected = state.calendars.firstOrNull { it.id == state.calendarId }
+    // Existing events stay in their calendar: moving needs a delete and a create on the server
+    val canChoose = state.isNew && state.calendars.size > 1
+    Box {
+        SettingRow(
+            label = stringResource(Res.string.calendar),
+            value = selected?.name.orEmpty(),
+            onClick = { if (canChoose) expanded = true },
+            leading = {
+                Box(
+                    Modifier.size(12.dp)
+                        .clip(CircleShape)
+                        .background(
+                            selected?.color?.let { Color(it) } ?: MaterialTheme.colorScheme.primary
+                        )
+                )
+            },
+        )
+        if (expanded) {
+            DropdownMenu(expanded = true, onDismissRequest = { expanded = false }) {
+                for (option in state.calendars) {
+                    DropdownMenuItem(
+                        text = { Text(option.name) },
+                        onClick = {
+                            onPick(option.id)
+                            expanded = false
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RepeatRow(state: EditorState, onPick: (RepeatChoice) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        SettingRow(
+            label = stringResource(Res.string.repeat),
+            value = repeatLabel(state.repeat, state.customRule),
+            onClick = { expanded = true },
+        )
+        if (expanded) {
+            val choices =
+                RepeatChoice.entries.filter {
+                    it != RepeatChoice.Custom || state.customRule != null
+                }
+            DropdownMenu(expanded = true, onDismissRequest = { expanded = false }) {
+                for (choice in choices) {
+                    DropdownMenuItem(
+                        text = { Text(repeatLabel(choice, state.customRule)) },
+                        onClick = {
+                            onPick(choice)
+                            expanded = false
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RemindersDialog(
+    selected: Set<Int>,
+    onDismiss: () -> Unit,
+    onConfirm: (Set<Int>) -> Unit,
+) {
+    var chosen by remember { mutableStateOf(selected) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(Res.string.reminders)) },
+        text = {
+            Column {
+                for (minutes in (REMINDER_PRESETS + selected).distinct().sorted()) {
+                    val checked = minutes in chosen
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier =
+                            Modifier.fillMaxWidth().clickable {
+                                chosen = if (checked) chosen - minutes else chosen + minutes
+                            },
+                    ) {
+                        Checkbox(checked = checked, onCheckedChange = null)
+                        Text(reminderLabel(minutes), modifier = Modifier.padding(start = 8.dp))
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(chosen) }) { Text(stringResource(Res.string.ok)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(Res.string.cancel)) }
+        },
+    )
 }
 
 @Composable
@@ -329,70 +494,6 @@ private fun DateDialog(initial: LocalDate, onDismiss: () -> Unit, onPick: (Local
         },
     ) {
         DatePicker(state = pickerState)
-    }
-}
-
-@Composable
-private fun CalendarPicker(state: EditorState, enabled: Boolean, onPick: (Long) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    val selected = state.calendars.firstOrNull { it.id == state.calendarId }
-    ExposedDropdownMenuBox(
-        expanded = expanded && enabled,
-        onExpandedChange = { if (enabled) expanded = it },
-    ) {
-        OutlinedTextField(
-            value = selected?.name.orEmpty(),
-            onValueChange = {},
-            readOnly = true,
-            enabled = enabled,
-            label = { Text(stringResource(Res.string.calendar)) },
-            trailingIcon = { if (enabled) ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
-            modifier =
-                Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
-        )
-        ExposedDropdownMenu(
-            expanded = expanded && enabled,
-            onDismissRequest = { expanded = false },
-        ) {
-            for (option in state.calendars) {
-                DropdownMenuItem(
-                    text = { Text(option.name) },
-                    onClick = {
-                        onPick(option.id)
-                        expanded = false
-                    },
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun RepeatPicker(state: EditorState, onPick: (RepeatChoice) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    val choices =
-        RepeatChoice.entries.filter { it != RepeatChoice.Custom || state.customRule != null }
-    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
-        OutlinedTextField(
-            value = repeatLabel(state.repeat, state.customRule),
-            onValueChange = {},
-            readOnly = true,
-            label = { Text(stringResource(Res.string.repeat)) },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
-            modifier =
-                Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
-        )
-        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            for (choice in choices) {
-                DropdownMenuItem(
-                    text = { Text(repeatLabel(choice, state.customRule)) },
-                    onClick = {
-                        onPick(choice)
-                        expanded = false
-                    },
-                )
-            }
-        }
     }
 }
 

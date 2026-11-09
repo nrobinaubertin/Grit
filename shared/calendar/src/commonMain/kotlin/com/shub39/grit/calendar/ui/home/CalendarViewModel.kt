@@ -26,6 +26,7 @@ import com.shub39.grit.calendar.data.db.InstanceRow
 import com.shub39.grit.calendar.ui.Formatting
 import com.shub39.grit.core.interfaces.SettingsDatastore
 import java.time.ZoneId
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -36,6 +37,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -163,9 +165,11 @@ class CalendarViewModel(
             .distinctUntilChanged()
             .flatMapLatest { days ->
                 val first = today()
-                eventsBetween(first, first.plus(DatePeriod(days = days))).map { byDay ->
-                    byDay.filterKeys { it >= first }.toList().sortedBy { it.first }
-                }
+                eventsBetween(first, first.plus(DatePeriod(days = days)))
+                    .map { byDay ->
+                        byDay.filterKeys { it >= first }.toList().sortedBy { it.first }
+                    }
+                    .flowOn(Dispatchers.Default)
             }
 
     private val settingsFlow =
@@ -280,6 +284,8 @@ class CalendarViewModel(
                 emitAll(store.instances(from - DAY_MS, to + DAY_MS))
             }
             .map { rows -> rows.byDay(zone, first, last) }
+            // Grouping by day converts every instance: keep it off the main thread
+            .flowOn(Dispatchers.Default)
     }
 
     private class SyncInfo(
