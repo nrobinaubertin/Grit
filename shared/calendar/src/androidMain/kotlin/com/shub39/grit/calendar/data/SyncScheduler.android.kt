@@ -37,7 +37,7 @@ import org.koin.core.component.get
 
 /** WorkManager jobs: every 30 minutes with network, and 5 seconds after a local change. */
 @Single(createdAtStart = true)
-actual class SyncScheduler(context: Context, store: CalendarStore) {
+actual class SyncScheduler(context: Context, store: CalendarStore, reminders: ReminderScheduler) {
     private val workManager = WorkManager.getInstance(context.applicationContext)
     private val constraints =
         Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
@@ -52,7 +52,14 @@ actual class SyncScheduler(context: Context, store: CalendarStore) {
                 .build(),
         )
         // REPLACE restarts the delay on every edit, so that a burst of edits gives one sync
-        scope.launch { store.localChanges.collect { enqueue(ExistingWorkPolicy.REPLACE, 5) } }
+        scope.launch {
+            store.localChanges.collect {
+                reminders.reschedule()
+                enqueue(ExistingWorkPolicy.REPLACE, 5)
+            }
+        }
+        // Upstream can cancel all alarms of the app, so set ours again at every start
+        scope.launch { reminders.reschedule() }
     }
 
     actual fun requestSync() = enqueue(ExistingWorkPolicy.KEEP, 0)

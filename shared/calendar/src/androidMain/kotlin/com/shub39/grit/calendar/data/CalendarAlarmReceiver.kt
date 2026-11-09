@@ -28,43 +28,43 @@ import kotlinx.coroutines.launch
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.get
 
-/**
- * Receives the reminder alarm, and the system broadcasts after which alarms must be set again:
- * boot, app update, clock change and time zone change.
- */
+/** Receives the reminder alarm (not exported). */
 class CalendarAlarmReceiver : BroadcastReceiver(), KoinComponent {
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    override fun onReceive(context: Context, intent: Intent) = handle(intent, goAsync())
+}
 
+/**
+ * Receives the system broadcasts after which the alarm must be set again: boot, app update, clock
+ * change and time zone change. Exported, so it ignores the reminder action.
+ */
+class CalendarTimeReceiver : BroadcastReceiver(), KoinComponent {
     override fun onReceive(context: Context, intent: Intent) {
-        val pending = goAsync()
-        scope.launch {
-            try {
-                val reminders = get<ReminderScheduler>()
-                when (intent.action) {
-                    ReminderScheduler.ACTION_REMINDER -> {
-                        // Grit's "pause notifications" setting applies to calendar reminders too
-                        val paused = get<SettingsDatastore>().getNotificationsFlow().first()
-                        reminders.fire(paused)
-                    }
-                    Intent.ACTION_TIMEZONE_CHANGED -> {
-                        // Floating and all-day events depend on the device time zone
-                        get<CalendarStore>().expandAll()
-                        reminders.reschedule()
-                    }
-                    else -> reminders.reschedule()
-                }
-            } finally {
-                pending.finish()
-            }
-        }
+        if (intent.action == ReminderScheduler.ACTION_REMINDER) return
+        handle(intent, goAsync())
     }
 }
 
-/** Same handling as [CalendarAlarmReceiver], registered for system broadcasts (exported). */
-class CalendarTimeReceiver : BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent) {
-        // Only forward the system actions that the manifest filter lets through
-        if (intent.action == ReminderScheduler.ACTION_REMINDER) return
-        CalendarAlarmReceiver().onReceive(context, intent)
+private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+private fun KoinComponent.handle(intent: Intent, pending: BroadcastReceiver.PendingResult) {
+    scope.launch {
+        try {
+            val reminders = get<ReminderScheduler>()
+            when (intent.action) {
+                ReminderScheduler.ACTION_REMINDER -> {
+                    // Grit's "pause notifications" setting applies to calendar reminders too
+                    val paused = get<SettingsDatastore>().getNotificationsFlow().first()
+                    reminders.fire(paused)
+                }
+                Intent.ACTION_TIMEZONE_CHANGED -> {
+                    // Floating and all-day events depend on the device time zone
+                    get<CalendarStore>().expandAll()
+                    reminders.reschedule()
+                }
+                else -> reminders.reschedule()
+            }
+        } finally {
+            pending.finish()
+        }
     }
 }
