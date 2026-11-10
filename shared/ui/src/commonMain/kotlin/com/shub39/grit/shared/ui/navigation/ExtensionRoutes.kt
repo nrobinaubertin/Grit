@@ -16,6 +16,7 @@
  */
 package com.shub39.grit.shared.ui.navigation
 
+import androidx.compose.runtime.Composable
 import androidx.navigation3.runtime.EntryProviderScope
 
 // Extension points for features that live in modules outside :shared:ui (calendar fork).
@@ -35,4 +36,9 @@ data object CalendarHome : CalendarRoute
  */
 interface NavEntryContributor {
     fun EntryProviderScope<Routes>.entries(backStack: TopLevelBackStack)
+}
+
+/** Adds a section to the Backup page of the settings, for example scheduled backups. */
+interface BackupPageContributor {
+    @Composable fun Section()
 }

@@ -36,80 +36,71 @@ import org.koin.mp.KoinPlatform
 @Single(binds = [ExportRepo::class])
 class ExportImpl(private val taskRepo: TaskRepo, private val habitsRepo: HabitRepo) : ExportRepo {
     override suspend fun exportToJson() {
-        coroutineScope {
-            val habitsDef =
-                async {
-                        withContext(Dispatchers.IO) {
-                            habitsRepo.getHabits().map { it.toHabitSchema() }
-                        }
-                    }
-                    .await()
+        val text = exportJsonText()
+        val time = LocalDateTime.now().toString().replace(":", "").replace(" ", "")
+        val file =
+            FileKit.openFileSaver(suggestedName = "Grit-Export-$time", defaultExtension = "json")
+        file?.writeString(text)
+    }
 
-            val statusesDef =
-                async {
-                        withContext(Dispatchers.IO) {
-                            habitsRepo.getHabitStatuses().map { it.toHabitStatusSchema() }
-                        }
+    override suspend fun exportJsonText(): String = coroutineScope {
+        val habitsDef =
+            async {
+                    withContext(Dispatchers.IO) {
+                        habitsRepo.getHabits().map { it.toHabitSchema() }
                     }
-                    .await()
-
-            val habitCategoriesDef =
-                async {
-                        withContext(Dispatchers.IO) {
-                            habitsRepo.getHabitCategories().map { it.toHabitCategorySchema() }
-                        }
-                    }
-                    .await()
-
-            val tasksDef =
-                async {
-                        withContext(Dispatchers.IO) {
-                            taskRepo.getTasks().map { it.toTaskSchema() }
-                        }
-                    }
-                    .await()
-
-            val categoriesDef =
-                async {
-                        withContext(Dispatchers.IO) {
-                            taskRepo.getCategories().map { it.toCategorySchema() }
-                        }
-                    }
-                    .await()
-
-            val subTasksDef =
-                async {
-                        withContext(Dispatchers.IO) {
-                            taskRepo.getSubTasks().map { it.toSubTaskSchema() }
-                        }
-                    }
-                    .await()
-
-            val extensions =
-                KoinPlatform.getKoin().getAll<BackupContributor>().associate {
-                    it.key to it.export()
                 }
+                .await()
 
-            val time = LocalDateTime.now().toString().replace(":", "").replace(" ", "")
-            val file =
-                FileKit.openFileSaver(
-                    suggestedName = "Grit-Export-$time",
-                    defaultExtension = "json",
-                )
+        val statusesDef =
+            async {
+                    withContext(Dispatchers.IO) {
+                        habitsRepo.getHabitStatuses().map { it.toHabitStatusSchema() }
+                    }
+                }
+                .await()
 
-            file?.writeString(
-                Json.encodeToString(
-                    ExportSchema(
-                        habits = habitsDef,
-                        habitStatus = statusesDef,
-                        habitCategories = habitCategoriesDef,
-                        tasks = tasksDef,
-                        categories = categoriesDef,
-                        subTasks = subTasksDef,
-                        extensions = extensions,
-                    )
-                )
+        val habitCategoriesDef =
+            async {
+                    withContext(Dispatchers.IO) {
+                        habitsRepo.getHabitCategories().map { it.toHabitCategorySchema() }
+                    }
+                }
+                .await()
+
+        val tasksDef =
+            async { withContext(Dispatchers.IO) { taskRepo.getTasks().map { it.toTaskSchema() } } }
+                .await()
+
+        val categoriesDef =
+            async {
+                    withContext(Dispatchers.IO) {
+                        taskRepo.getCategories().map { it.toCategorySchema() }
+                    }
+                }
+                .await()
+
+        val subTasksDef =
+            async {
+                    withContext(Dispatchers.IO) {
+                        taskRepo.getSubTasks().map { it.toSubTaskSchema() }
+                    }
+                }
+                .await()
+
+        val extensions =
+            KoinPlatform.getKoin().getAll<BackupContributor>().associate { it.key to it.export() }
+
+        Json.encodeToString(
+            ExportSchema(
+                habits = habitsDef,
+                habitStatus = statusesDef,
+                habitCategories = habitCategoriesDef,
+                tasks = tasksDef,
+                categories = categoriesDef,
+                subTasks = subTasksDef,
+                extensions = extensions,
             )
-        }
+        )
     }
 }

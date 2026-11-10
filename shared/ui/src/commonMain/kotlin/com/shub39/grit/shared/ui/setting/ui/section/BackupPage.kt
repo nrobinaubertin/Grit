@@ -37,6 +37,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -49,6 +50,7 @@ import com.shub39.grit.core.theme.Theme
 import com.shub39.grit.shared.ui.components.endItemShape
 import com.shub39.grit.shared.ui.components.leadingItemShape
 import com.shub39.grit.shared.ui.components.listItemColors
+import com.shub39.grit.shared.ui.navigation.BackupPageContributor
 import com.shub39.grit.shared.ui.setting.SettingsAction
 import com.shub39.grit.shared.ui.setting.SettingsState
 import com.shub39.grit.shared.ui.theme.GritTheme
@@ -57,6 +59,7 @@ import grit.shared.ui.generated.resources.*
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.resources.vectorResource
+import org.koin.compose.getKoin
 
 @Composable
 fun BackupPage(
@@ -66,6 +69,8 @@ fun BackupPage(
     onNavigateBack: () -> Unit,
 ) {
     LaunchedEffect(Unit) { onAction(SettingsAction.OnResetBackupState) }
+    val koin = getKoin()
+    val extraSections = remember(koin) { koin.getAll<BackupPageContributor>() }
 
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
     Column(modifier = modifier.fillMaxSize().nestedScroll(scrollBehavior.nestedScrollConnection)) {
@@ -191,6 +196,7 @@ fun BackupPage(
                     }
                 }
             }
+            items(extraSections.size) { extraSections[it].Section() }
         }
     }
 }

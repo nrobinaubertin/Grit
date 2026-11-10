@@ -18,6 +18,9 @@ package com.shub39.grit.core.settings.backup
 
 interface ExportRepo {
     suspend fun exportToJson()
+
+    /** The backup as JSON text, without a save dialog, for scheduled backups. */
+    suspend fun exportJsonText(): String
 }
 
 enum class ExportState {

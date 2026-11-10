@@ -114,4 +114,18 @@
     <string name="open_on_calendar">Open Grit on the calendar</string>
     <string name="open_on_calendar_body">Grit shows the Calendar tab first, instead of the tasks or the habits.</string>
     <string name="import_new_calendar">New calendar on this device: %1$s</string>
+    <string name="auto_backup">Automatic backups</string>
+    <string name="auto_backup_body">On a schedule, Grit writes the same file as Export into a folder that you choose. It keeps only the newest automatic files there. Other files in the folder stay.</string>
+    <string name="auto_backup_folder">Folder</string>
+    <string name="auto_backup_no_folder">No folder chosen yet</string>
+    <string name="auto_backup_choose_folder">Choose</string>
+    <string name="auto_backup_off">Off</string>
+    <string name="auto_backup_daily">Daily</string>
+    <string name="auto_backup_weekly">Weekly</string>
+    <string name="auto_backup_monthly">Monthly</string>
+    <string name="auto_backup_keep">Backups to keep</string>
+    <string name="auto_backup_last">Last automatic backup: %1$s</string>
+    <string name="auto_backup_never">No automatic backup yet</string>
+    <string name="auto_backup_error">The last attempt failed: %1$s</string>
+    <string name="auto_backup_now">Back up now</string>
 </resources>

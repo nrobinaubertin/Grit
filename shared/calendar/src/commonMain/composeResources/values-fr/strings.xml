@@ -114,4 +114,18 @@
     <string name="open_on_calendar">Ouvrir Grit sur le calendrier</string>
     <string name="open_on_calendar_body">Grit affiche d’abord l’onglet Calendrier, au lieu des tâches ou des habitudes.</string>
     <string name="import_new_calendar">Nouveau calendrier sur cet appareil : %1$s</string>
+    <string name="auto_backup">Sauvegardes automatiques</string>
+    <string name="auto_backup_body">Selon la fréquence choisie, Grit écrit le même fichier qu’Exporter dans un dossier de votre choix. Il n’y garde que les fichiers automatiques les plus récents. Les autres fichiers du dossier restent.</string>
+    <string name="auto_backup_folder">Dossier</string>
+    <string name="auto_backup_no_folder">Aucun dossier choisi</string>
+    <string name="auto_backup_choose_folder">Choisir</string>
+    <string name="auto_backup_off">Jamais</string>
+    <string name="auto_backup_daily">Quotidienne</string>
+    <string name="auto_backup_weekly">Hebdo</string>
+    <string name="auto_backup_monthly">Mensuelle</string>
+    <string name="auto_backup_keep">Sauvegardes à garder</string>
+    <string name="auto_backup_last">Dernière sauvegarde automatique : %1$s</string>
+    <string name="auto_backup_never">Pas encore de sauvegarde automatique</string>
+    <string name="auto_backup_error">La dernière tentative a échoué : %1$s</string>
+    <string name="auto_backup_now">Sauvegarder maintenant</string>
 </resources>

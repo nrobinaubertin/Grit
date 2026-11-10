@@ -35,9 +35,12 @@ The fork keeps edits to upstream files small, so that upstream changes merge eas
 - Both `GritModules.kt` files: `CalendarModules` in the Koin `includes`.
 - `shared/ui/.../navigation/`: the new file `ExtensionRoutes.kt`, plus a few lines in `NavigationConfig.kt`, `NavBarAndRail.kt` and `GritNavDisplay.kt`.
 - `shared/core/.../settings/backup/`: the new file `BackupContributor.kt`.
-- `shared/logic/.../core/backup/`: the `extensions` field in `ExportSchema.kt`, and a few lines in `ExportImpl.kt` and `RestoreImpl.kt`.
+- `shared/core/.../settings/backup/ExportRepo.kt`: `exportJsonText()`, the backup as text without a save dialog.
+- `shared/logic/.../core/backup/`: the `extensions` field in `ExportSchema.kt`, `exportJsonText()` in `ExportImpl.kt`, and a few lines in `RestoreImpl.kt`.
+- `shared/ui/.../setting/ui/section/BackupPage.kt`: a few lines that show the sections of `BackupPageContributor` (in `ExtensionRoutes.kt`).
+- `shared/core/.../settings/Sections.kt` and `GritNavDisplay.kt`: the `Calendar` starting page.
 
-The calendar module adds its screens through `NavEntryContributor`, which Koin provides to `GritNavDisplay`. It adds its part of the backup file through `BackupContributor`. Its Android manifest adds the INTERNET permission, the receivers and a network security configuration. The manifest merger adds these to both app flavors.
+The calendar module adds its screens through `NavEntryContributor`, which Koin provides to `GritNavDisplay`. It adds its part of the backup file through `BackupContributor`, and the automatic backups (package `autobackup`) to the Backup page through `BackupPageContributor`. Its Android manifest adds the INTERNET permission, the receivers and a network security configuration. The manifest merger adds these to both app flavors.
 
 ## Data and privacy
 
