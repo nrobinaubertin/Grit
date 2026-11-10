@@ -27,6 +27,9 @@ import com.shub39.grit.calendar.data.PhoneCalendars
 import com.shub39.grit.calendar.data.db.AccountEntity
 import com.shub39.grit.calendar.data.db.CategoryEntity
 import com.shub39.grit.calendar.data.db.CollectionEntity
+import grit.shared.calendar.generated.resources.Res
+import grit.shared.calendar.generated.resources.error_no_calendar_at_url
+import grit.shared.calendar.generated.resources.error_wrong_login
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -35,6 +38,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.getString
 import org.koin.core.annotation.KoinViewModel
 
 @Immutable
@@ -114,7 +118,8 @@ class AccountViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: AuthenticationException) {
-                form.update { it.copy(connecting = false, error = "Wrong user name or password") }
+                val message = getString(Res.string.error_wrong_login)
+                form.update { it.copy(connecting = false, error = message) }
             } catch (e: Exception) {
                 form.update {
                     it.copy(connecting = false, error = e.message ?: e::class.simpleName)
@@ -150,7 +155,7 @@ class AccountViewModel(
             val error =
                 try {
                     if (syncManager.addCollectionByUrl(account.id, url.trim()) == null) {
-                        "No calendar found at this URL"
+                        getString(Res.string.error_no_calendar_at_url)
                     } else {
                         syncManager.syncAll()
                         null

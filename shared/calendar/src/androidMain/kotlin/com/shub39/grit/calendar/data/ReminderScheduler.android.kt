@@ -30,6 +30,10 @@ import android.text.format.DateUtils
 import com.shub39.grit.calendar.data.db.AlarmEntity
 import com.shub39.grit.calendar.data.db.CalendarDatabase
 import com.shub39.grit.calendar.data.db.KeyValueEntity
+import grit.shared.calendar.generated.resources.Res
+import grit.shared.calendar.generated.resources.notification_channel
+import grit.shared.calendar.generated.resources.untitled_event
+import org.jetbrains.compose.resources.getString
 import org.koin.core.annotation.Single
 
 /**
@@ -69,7 +73,7 @@ actual class ReminderScheduler(private val context: Context, db: CalendarDatabas
     suspend fun fire(paused: Boolean) {
         val now = System.currentTimeMillis()
         val watermark = dao.getValue(WATERMARK) ?: (now - MAX_LATE_MS)
-        if (!paused) dao.alarmsBetween(watermark, now).forEach(::notify)
+        if (!paused) dao.alarmsBetween(watermark, now).forEach { notify(it) }
         dao.putValue(KeyValueEntity(WATERMARK, now))
         reschedule()
     }
@@ -82,7 +86,7 @@ actual class ReminderScheduler(private val context: Context, db: CalendarDatabas
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-    private fun notify(alarm: AlarmEntity) {
+    private suspend fun notify(alarm: AlarmEntity) {
         if (
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
                 context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
@@ -92,7 +96,11 @@ actual class ReminderScheduler(private val context: Context, db: CalendarDatabas
         }
         val manager = context.getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, "Calendar events", NotificationManager.IMPORTANCE_HIGH)
+            NotificationChannel(
+                CHANNEL_ID,
+                getString(Res.string.notification_channel),
+                NotificationManager.IMPORTANCE_HIGH,
+            )
         )
         val launch = context.packageManager.getLaunchIntentForPackage(context.packageName)
         val content =
@@ -123,7 +131,7 @@ actual class ReminderScheduler(private val context: Context, db: CalendarDatabas
         val notification =
             Notification.Builder(context, CHANNEL_ID)
                 .setSmallIcon(smallIcon())
-                .setContentTitle(alarm.title ?: "Event")
+                .setContentTitle(alarm.title ?: getString(Res.string.untitled_event))
                 .setContentText(text)
                 .setCategory(Notification.CATEGORY_EVENT)
                 .setAutoCancel(true)

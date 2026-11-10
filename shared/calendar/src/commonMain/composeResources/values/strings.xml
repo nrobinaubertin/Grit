@@ -91,4 +91,9 @@
     <string name="create">Create</string>
     <string name="delete_local_calendar_confirm">Delete the calendar \"%1$s\" and all its events? This cannot be undone.</string>
     <string name="caldav_server">CalDAV server</string>
+    <string name="error_wrong_login">Wrong user name or password</string>
+    <string name="error_no_calendar_at_url">No calendar found at this URL</string>
+    <string name="error_password_missing">Password missing. Enter it again.</string>
+    <string name="notification_channel">Calendar events</string>
+    <string name="untitled_event">Event</string>
 </resources>

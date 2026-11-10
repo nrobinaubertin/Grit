@@ -25,6 +25,9 @@ import com.shub39.grit.caldav.sync.CollectionSyncer
 import com.shub39.grit.calendar.data.db.AccountEntity
 import com.shub39.grit.calendar.data.db.CalendarDatabase
 import com.shub39.grit.calendar.data.db.CollectionEntity
+import grit.shared.calendar.generated.resources.Res
+import grit.shared.calendar.generated.resources.error_password_missing
+import grit.shared.calendar.generated.resources.error_wrong_login
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Clock
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,6 +35,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import org.jetbrains.compose.resources.getString
 import org.koin.core.annotation.Single
 
 /** Accounts, calendar discovery, and sync of all calendars. */
@@ -133,7 +137,7 @@ class CalendarSyncManager(
         val now = clock.now().toEpochMilliseconds()
         val password = credentials.load(account.id)
         if (password == null) {
-            dao.setAccountSyncResult(account.id, now, "Password missing. Enter it again.")
+            dao.setAccountSyncResult(account.id, now, getString(Res.string.error_password_missing))
             return
         }
         try {
@@ -173,7 +177,7 @@ class CalendarSyncManager(
         } catch (e: CancellationException) {
             throw e
         } catch (_: AuthenticationException) {
-            dao.setAccountSyncResult(account.id, now, "Wrong user name or password")
+            dao.setAccountSyncResult(account.id, now, getString(Res.string.error_wrong_login))
         } catch (e: Exception) {
             dao.setAccountSyncResult(account.id, now, e.message ?: e::class.simpleName)
         }

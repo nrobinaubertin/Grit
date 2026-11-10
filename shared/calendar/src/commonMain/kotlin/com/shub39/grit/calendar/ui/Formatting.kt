@@ -57,8 +57,11 @@ object Formatting {
     fun time(time: LocalTime, is24Hr: Boolean): String =
         java.time.LocalTime.of(time.hour, time.minute).format(timePattern(is24Hr))
 
-    /** For example "Monday 9 November". */
-    fun dayTitle(date: LocalDate): String = date.toJavaLocalDate().format(pattern("EEEE d MMMM"))
+    /** For example "Monday 9 November", or "Lundi 9 novembre" in French. */
+    fun dayTitle(date: LocalDate): String =
+        date.toJavaLocalDate().format(pattern("EEEE d MMMM")).replaceFirstChar {
+            it.titlecase(locale)
+        }
 
     fun dateMedium(date: LocalDate): String =
         date.toJavaLocalDate().format(localized(FormatStyle.MEDIUM, null))

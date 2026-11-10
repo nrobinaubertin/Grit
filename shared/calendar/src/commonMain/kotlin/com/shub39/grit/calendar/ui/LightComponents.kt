@@ -30,6 +30,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.TextAutoSize
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -40,6 +43,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 // Light versions of Material components for the calendar screens. Material's top app bar and
 // segmented buttons handle scrolling, colors and animations that these screens do not use, and
@@ -59,12 +63,21 @@ internal fun LightTopBar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (navigation != null) navigation() else Spacer(Modifier.width(12.dp))
-        Text(
+        // Long titles, for example in French, shrink to fit. Clip, not Ellipsis: auto-size detects
+        // an ellipsis only on Android. With one line, words that still do not fit are hidden whole.
+        val titleStyle = MaterialTheme.typography.titleLarge
+        BasicText(
             text = title,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
+            style =
+                titleStyle.copy(fontWeight = FontWeight.Bold, color = LocalContentColor.current),
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            overflow = TextOverflow.Clip,
+            autoSize =
+                TextAutoSize.StepBased(
+                    minFontSize = 14.sp,
+                    maxFontSize = titleStyle.fontSize,
+                    stepSize = 1.sp,
+                ),
             modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
         )
         actions()
