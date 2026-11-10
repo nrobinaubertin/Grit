@@ -86,7 +86,11 @@ class CalendarBackup(
     private val reminders: ReminderScheduler,
 ) : BackupContributor {
     private val dao = db.calendarDao()
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = Json {
+        ignoreUnknownKeys = true
+        // The version must be in every file, so that a later format can recognize older files
+        encodeDefaults = true
+    }
 
     override val key: String = "calendar"
 

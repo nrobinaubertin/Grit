@@ -9,7 +9,7 @@
     <string name="no_category">No category</string>
     <string name="new_category">New category</string>
     <string name="categories_body">Categories and their colors are stored in the events, so everyone who shares a calendar sees them.</string>
-    <string name="delete_category_confirm">Delete the category \"%1$s\"? Events keep their content but lose this category.</string>
+    <string name="delete_category_confirm">Delete the category “%1$s”? Events keep their content but lose this category.</string>
     <string name="agenda">Agenda</string>
     <string name="today">Today</string>
     <string name="sync_now">Sync now</string>
@@ -88,7 +88,7 @@
     <string name="calendar_name">Name</string>
     <string name="color">Color</string>
     <string name="create">Create</string>
-    <string name="delete_local_calendar_confirm">Delete the calendar \"%1$s\" and all its events? This cannot be undone.</string>
+    <string name="delete_local_calendar_confirm">Delete the calendar “%1$s” and all its events? This cannot be undone.</string>
     <string name="caldav_server">CalDAV server</string>
     <string name="error_wrong_login">Wrong user name or password</string>
     <string name="error_no_calendar_at_url">No calendar found at this URL</string>

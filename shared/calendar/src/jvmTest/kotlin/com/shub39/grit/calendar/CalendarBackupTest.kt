@@ -177,6 +177,11 @@ class CalendarBackupTest {
     fun `a device without calendars exports an empty part`() = runBlocking {
         val empty = device()
         val file = backupFile(empty)
+        // The version is written even though it is the default
+        assertEquals(
+            CalendarBackup.VERSION.toString(),
+            (file as kotlinx.serialization.json.JsonObject)["version"].toString(),
+        )
         val other = device()
         other.backup.restore(file)
         assertTrue(other.dao.accounts().isEmpty())
