@@ -8,6 +8,8 @@
     <!-- Event reminders -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Shows the calendars of other apps, read-only. Asked only when the user turns it on. -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
 
     <application android:networkSecurityConfig="@xml/calendar_network_security_config">
         <receiver

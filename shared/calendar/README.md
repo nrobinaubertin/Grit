@@ -10,6 +10,7 @@ This fork of Grit adds a Calendar tab that syncs with a CalDAV server, for examp
 - It shows read-only calendars without edit actions. If the server does not give the `DAV:write-content` privilege, the calendar is read-only.
 - It shows reminders as Android notifications. The Grit setting that pauses notifications also pauses calendar reminders.
 - It syncs at these times: every 30 minutes, 5 seconds after a local change, at the opening of the tab, and on pull-to-refresh.
+- On Android, it can also show the calendars of other apps, for example Google Calendar or DAVx5. These apps keep their calendars in the Android calendar provider (the shared calendar storage of the phone). Grit only reads these calendars: their events have no edit actions, and the app that owns them shows their reminders. Turn them on under "Calendars from other apps" on the "Calendars and accounts" screen.
 
 The desktop app syncs while it runs and has no reminders, like the upstream desktop app.
 
@@ -40,6 +41,7 @@ The calendar module adds its screens through `NavEntryContributor`, which Koin p
 - On Android, the calendar database is in `noBackupFilesDir`. Calendars are downloaded again after a restore.
 - The account password is encrypted with an Android Keystore key. On desktop, it is in a file that only the user can read.
 - Every event keeps its full iCalendar text. Edits change only the fields that Grit shows, so other clients lose no data.
+- If you turn on the calendars of other apps, Grit asks for the calendar read permission. It does not ask before. It does not copy their events into its database, and it never writes to the calendar provider.
 
 ## Tests
 

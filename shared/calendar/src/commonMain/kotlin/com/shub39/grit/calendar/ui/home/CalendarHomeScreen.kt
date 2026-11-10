@@ -153,7 +153,9 @@ fun CalendarHomeScreen(
         CalendarFilterSheet(
             calendars = state.calendars,
             onDismiss = { showFilter = false },
-            onToggle = { id, visible -> onAction(CalendarAction.SetCalendarVisible(id, visible)) },
+            onToggle = { calendar, visible ->
+                onAction(CalendarAction.SetCalendarVisible(calendar.id, visible, calendar.phone))
+            },
         )
     }
 
@@ -390,7 +392,7 @@ private fun MonthView(
         if (selectedEvents.isEmpty()) {
             item(key = "empty") { EmptyDay() }
         } else {
-            items(selectedEvents, key = { it.instanceId }) { event ->
+            items(selectedEvents, key = { it.key }) { event ->
                 EventRow(event, is24Hr, onClick = { onAction(CalendarAction.OpenEvent(event)) })
             }
         }
@@ -420,7 +422,7 @@ private fun AgendaView(
                             .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp),
                 )
             }
-            items(events, key = { "$date-${it.instanceId}" }) { event ->
+            items(events, key = { "$date-${it.key}" }) { event ->
                 EventRow(event, is24Hr, onClick = { onAction(CalendarAction.OpenEvent(event)) })
             }
         }
@@ -500,7 +502,7 @@ internal fun timeText(event: DayEvent, is24Hr: Boolean): String {
 private fun CalendarFilterSheet(
     calendars: List<CalendarFilterItem>,
     onDismiss: () -> Unit,
-    onToggle: (Long, Boolean) -> Unit,
+    onToggle: (CalendarFilterItem, Boolean) -> Unit,
 ) {
     GritBottomSheet(onDismissRequest = onDismiss, padding = 16.dp) {
         Text(
@@ -514,15 +516,22 @@ private fun CalendarFilterSheet(
                 modifier =
                     Modifier.fillMaxWidth()
                         .clip(RowShape)
-                        .clickable { onToggle(calendar.id, !calendar.visible) }
+                        .clickable { onToggle(calendar, !calendar.visible) }
                         .padding(vertical = 4.dp),
             ) {
                 Checkbox(checked = calendar.visible, onCheckedChange = null)
                 Column(modifier = Modifier.padding(start = 8.dp)) {
                     Text(calendar.name, style = MaterialTheme.typography.bodyLarge)
-                    if (calendar.local) {
+                    val detail =
+                        when {
+                            calendar.local -> stringResource(Res.string.on_this_device)
+                            calendar.phone ->
+                                calendar.detail ?: stringResource(Res.string.from_other_apps)
+                            else -> null
+                        }
+                    if (detail != null) {
                         Text(
-                            stringResource(Res.string.on_this_device),
+                            detail,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

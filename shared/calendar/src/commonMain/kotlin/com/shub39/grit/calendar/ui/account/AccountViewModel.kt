@@ -22,6 +22,8 @@ import androidx.lifecycle.viewModelScope
 import com.shub39.grit.caldav.AuthenticationException
 import com.shub39.grit.calendar.data.CalendarStore
 import com.shub39.grit.calendar.data.CalendarSyncManager
+import com.shub39.grit.calendar.data.PhoneCalendarItem
+import com.shub39.grit.calendar.data.PhoneCalendars
 import com.shub39.grit.calendar.data.db.AccountEntity
 import com.shub39.grit.calendar.data.db.CategoryEntity
 import com.shub39.grit.calendar.data.db.CollectionEntity
@@ -51,6 +53,11 @@ data class AccountState(
     /** Calendars that exist only on this device. */
     val localCalendars: List<CollectionEntity> = emptyList(),
     val categories: List<CategoryEntity> = emptyList(),
+    /** False on desktop, which has no calendars of other apps. */
+    val phoneSupported: Boolean = false,
+    /** True if the user turned on the calendars of other apps and Grit may read them. */
+    val phoneActive: Boolean = false,
+    val phoneCalendars: List<PhoneCalendarItem> = emptyList(),
     val form: AccountForm = AccountForm(),
     val syncing: Boolean = false,
     val loaded: Boolean = false,
@@ -60,6 +67,7 @@ data class AccountState(
 class AccountViewModel(
     private val store: CalendarStore,
     private val syncManager: CalendarSyncManager,
+    private val phone: PhoneCalendars,
 ) : ViewModel() {
     private val form = MutableStateFlow(AccountForm())
 
@@ -68,9 +76,9 @@ class AccountViewModel(
                 store.accountsFlow(),
                 store.collectionsFlow(),
                 store.categoriesFlow(),
-                syncManager.running,
-                form,
-            ) { accounts, collections, categories, running, form ->
+                combine(syncManager.running, form, ::Pair),
+                combine(phone.active, phone.calendars(), ::Pair),
+            ) { accounts, collections, categories, (running, form), (phoneActive, phoneCalendars) ->
                 val account = accounts.firstOrNull { !it.local }
                 val local = accounts.firstOrNull { it.local }
                 AccountState(
@@ -78,6 +86,9 @@ class AccountViewModel(
                     collections = collections.filter { it.accountId == account?.id },
                     localCalendars = collections.filter { it.accountId == local?.id },
                     categories = categories,
+                    phoneSupported = phone.supported,
+                    phoneActive = phoneActive,
+                    phoneCalendars = phoneCalendars,
                     form = form,
                     syncing = running,
                     loaded = true,
@@ -151,6 +162,15 @@ class AccountViewModel(
                 }
             onResult(error)
         }
+    }
+
+    /** Shows or hides the calendars of other apps. Call it after the permission is granted. */
+    fun setPhoneEnabled(enabled: Boolean) {
+        viewModelScope.launch { phone.setEnabled(enabled) }
+    }
+
+    fun setPhoneCalendarVisible(calendarId: Long, visible: Boolean) {
+        viewModelScope.launch { phone.setVisible(calendarId, visible) }
     }
 
     fun createLocalCalendar(name: String) {

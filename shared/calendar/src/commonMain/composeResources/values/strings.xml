@@ -80,6 +80,12 @@
     <string name="on_this_device">On this device</string>
     <string name="on_this_device_body">These calendars stay on this phone. They do not sync.</string>
     <string name="new_local_calendar">New calendar on this device</string>
+    <string name="from_other_apps">Calendars from other apps</string>
+    <string name="from_other_apps_body">Grit can show the calendars that other apps keep on this phone, for example Google Calendar or DAVx5. Grit only reads them: change their events in their own app.</string>
+    <string name="show_other_apps">Show calendars from other apps</string>
+    <string name="stop_other_apps">Stop showing them</string>
+    <string name="no_other_apps">No other app keeps calendars on this phone.</string>
+    <string name="calendar_permission_denied">Grit cannot read the calendars without the calendar permission. Allow it in the app settings of Grit.</string>
     <string name="calendar_name">Name</string>
     <string name="color">Color</string>
     <string name="create">Create</string>

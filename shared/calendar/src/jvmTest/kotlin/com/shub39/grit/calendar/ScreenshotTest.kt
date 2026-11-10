@@ -336,7 +336,15 @@ class ScreenshotTest {
                 com.shub39.grit.calendar.data.CredentialStore(),
                 com.shub39.grit.calendar.data.ReminderScheduler(),
             )
-        val viewModel = com.shub39.grit.calendar.ui.account.AccountViewModel(store, manager)
+        val viewModel =
+            com.shub39.grit.calendar.ui.account.AccountViewModel(
+                store,
+                manager,
+                com.shub39.grit.calendar.data.PhoneCalendars(
+                    com.shub39.grit.calendar.data.PhoneCalendarSource(),
+                    db,
+                ),
+            )
         shoot(
             "calendar-account",
             ready = {
@@ -374,7 +382,15 @@ class ScreenshotTest {
                 com.shub39.grit.calendar.data.CredentialStore(),
                 com.shub39.grit.calendar.data.ReminderScheduler(),
             )
-        val viewModel = com.shub39.grit.calendar.ui.account.AccountViewModel(store, manager)
+        val viewModel =
+            com.shub39.grit.calendar.ui.account.AccountViewModel(
+                store,
+                manager,
+                com.shub39.grit.calendar.data.PhoneCalendars(
+                    com.shub39.grit.calendar.data.PhoneCalendarSource(),
+                    db,
+                ),
+            )
         shoot(
             "calendar-account-local",
             ready = { viewModel.state.value.localCalendars.size == 1 },

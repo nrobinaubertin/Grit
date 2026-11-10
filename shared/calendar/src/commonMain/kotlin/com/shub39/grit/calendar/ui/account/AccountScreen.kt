@@ -63,6 +63,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.shub39.grit.calendar.data.CategoryColors
+import com.shub39.grit.calendar.data.PhoneCalendarItem
 import com.shub39.grit.calendar.data.db.CategoryEntity
 import com.shub39.grit.calendar.data.db.CollectionEntity
 import com.shub39.grit.calendar.ui.Formatting
@@ -82,6 +83,11 @@ fun AccountScreen(state: AccountState, viewModel: AccountViewModel, onBack: () -
     var addByUrl by remember { mutableStateOf(false) }
     var confirmRemove by remember { mutableStateOf(false) }
     var changePassword by remember { mutableStateOf(false) }
+    var phoneDenied by remember { mutableStateOf(false) }
+    val askCalendarPermission = rememberCalendarReadPermission { granted ->
+        phoneDenied = !granted
+        if (granted) viewModel.setPhoneEnabled(true)
+    }
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(modifier = Modifier.fillMaxSize().imePadding()) {
@@ -108,6 +114,9 @@ fun AccountScreen(state: AccountState, viewModel: AccountViewModel, onBack: () -
                     onNew = { newLocal = true },
                     onDelete = { deleteLocal = it },
                 )
+                if (state.phoneSupported) {
+                    phoneSection(state, viewModel, phoneDenied, onTurnOn = askCalendarPermission)
+                }
                 categorySection(
                     state,
                     onNew = { newCategory = true },
@@ -273,6 +282,79 @@ private fun LazyListScope.localSection(
         )
     }
     item { TextButton(onClick = onNew) { Text(stringResource(Res.string.new_local_calendar)) } }
+}
+
+/** The calendars that other apps keep on the phone. Grit only reads them. */
+private fun LazyListScope.phoneSection(
+    state: AccountState,
+    viewModel: AccountViewModel,
+    denied: Boolean,
+    onTurnOn: () -> Unit,
+) {
+    item {
+        Column {
+            SectionTitle(stringResource(Res.string.from_other_apps))
+            Text(
+                stringResource(Res.string.from_other_apps_body),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+    if (!state.phoneActive) {
+        item { TextButton(onClick = onTurnOn) { Text(stringResource(Res.string.show_other_apps)) } }
+        if (denied) {
+            item {
+                Text(
+                    stringResource(Res.string.calendar_permission_denied),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        }
+        return
+    }
+    if (state.phoneCalendars.isEmpty()) {
+        item {
+            Text(
+                stringResource(Res.string.no_other_apps),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+    }
+    items(state.phoneCalendars, key = { "phone-${it.calendar.id}" }) { item ->
+        PhoneCalendarRow(item) { viewModel.setPhoneCalendarVisible(item.calendar.id, it) }
+    }
+    item {
+        TextButton(onClick = { viewModel.setPhoneEnabled(false) }) {
+            Text(stringResource(Res.string.stop_other_apps))
+        }
+    }
+}
+
+@Composable
+private fun PhoneCalendarRow(item: PhoneCalendarItem, onVisible: (Boolean) -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ColorDot(item.calendar.color)
+            Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                Text(item.calendar.name, style = MaterialTheme.typography.bodyLarge)
+                item.calendar.accountName
+                    ?.takeIf { it != item.calendar.name }
+                    ?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+            }
+            LabeledSwitch(stringResource(Res.string.show_in_calendar), item.visible, onVisible)
+        }
+    }
 }
 
 private fun LazyListScope.categorySection(
