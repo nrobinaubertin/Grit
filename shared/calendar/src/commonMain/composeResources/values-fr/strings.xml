@@ -30,7 +30,6 @@
     <string name="calendars">Calendriers</string>
     <string name="read_only">Lecture seule</string>
     <string name="show_in_calendar">Afficher</string>
-    <string name="sync_calendar">Synchro</string>
     <string name="add_by_url">Ajouter un calendrier par URL</string>
     <string name="calendar_url">URL du calendrier</string>
     <string name="add">Ajouter</string>
@@ -128,4 +127,10 @@
     <string name="auto_backup_never">Pas encore de sauvegarde automatique</string>
     <string name="auto_backup_error">La dernière tentative a échoué : %1$s</string>
     <string name="auto_backup_now">Sauvegarder maintenant</string>
+    <string name="start_syncing">Synchroniser</string>
+    <string name="stop_syncing">Ne plus synchroniser</string>
+    <string name="start_syncing_confirm">Synchroniser « %1$s » ? Grit crée ce calendrier sur votre serveur CalDAV et y envoie ses événements. Vos autres appareils peuvent alors l’afficher, et vous pouvez le partager.</string>
+    <string name="stop_syncing_confirm">Ne plus synchroniser « %1$s » ? Grit garde ses événements sur cet appareil seulement. Le calendrier reste sur le serveur, pour vos autres appareils et les personnes qui le partagent. Si personne n’en a besoin, supprimez-le dans l’interface web du serveur.</string>
+    <string name="start_syncing_running">Création du calendrier sur le serveur…</string>
+    <string name="start_syncing_failed">Grit n’a pas pu synchroniser ce calendrier : %1$s</string>
 </resources>

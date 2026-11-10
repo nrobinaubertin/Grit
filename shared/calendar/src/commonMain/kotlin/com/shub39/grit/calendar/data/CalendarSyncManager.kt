@@ -21,13 +21,16 @@ import com.shub39.grit.caldav.CollectionInfo
 import com.shub39.grit.caldav.Credentials
 import com.shub39.grit.caldav.Discovery
 import com.shub39.grit.caldav.KtorDavClient
+import com.shub39.grit.caldav.WriteResult
 import com.shub39.grit.caldav.sync.CollectionSyncer
 import com.shub39.grit.calendar.data.db.AccountEntity
 import com.shub39.grit.calendar.data.db.CalendarDatabase
 import com.shub39.grit.calendar.data.db.CollectionEntity
+import com.shub39.grit.calendar.data.db.KeyValueEntity
 import grit.shared.calendar.generated.resources.Res
 import grit.shared.calendar.generated.resources.error_password_missing
 import grit.shared.calendar.generated.resources.error_wrong_login
+import java.util.UUID
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Clock
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -101,6 +104,8 @@ class CalendarSyncManager(
             } ?: return null
         val existing = dao.collections(accountId).firstOrNull { sameUrl(it.url, info.url) }
         if (existing != null) return existing
+        // Adding a calendar by hand undoes an earlier "Stop syncing"
+        dao.deleteValue(IGNORED + info.url.trimEnd('/'))
         val id = dao.insertCollection(info.toEntity(accountId, manual = true))
         return dao.collection(id)
     }
@@ -117,6 +122,107 @@ class CalendarSyncManager(
 
     suspend fun setSyncEnabled(collectionId: Long, enabled: Boolean) =
         dao.setSyncEnabled(collectionId, enabled)
+
+    /**
+     * Turns a calendar on this device into a calendar on the CalDAV server. Grit creates it in the
+     * calendar home with the same name and color, then marks every event for upload, and syncs. A
+     * server calendar whose sync was paused simply syncs again.
+     */
+    suspend fun startSyncing(collectionId: Long) {
+        mutex.withLock {
+            val calendar = dao.collection(collectionId) ?: return
+            if (dao.isLocalCollection(collectionId) != true) {
+                dao.setSyncEnabled(collectionId, true)
+                return@withLock
+            }
+            val account =
+                dao.accounts().firstOrNull { !it.local }
+                    ?: throw StartSyncingException("No CalDAV server is connected")
+            val password =
+                credentials.load(account.id) ?: throw AuthenticationException("No password")
+            val home =
+                account.homeSetUrl
+                    ?: account.principalUrl
+                    ?: throw StartSyncingException("The server did not give a calendar home")
+            val url = home.trimEnd('/') + "/" + UUID.randomUUID() + "/"
+            val result =
+                KtorDavClient(account.baseUrl, Credentials(account.username, password)).use {
+                    it.createCalendar(url, calendar.displayName ?: "Calendar", calendar.color)
+                }
+            if (result !is WriteResult.Ok) throw StartSyncingException(result.describe())
+            dao.updateCollection(
+                calendar.copy(
+                    accountId = account.id,
+                    url = url,
+                    canWrite = true,
+                    manual = false,
+                    syncEnabled = true,
+                    syncToken = null,
+                    ctag = null,
+                    lastSync = null,
+                    lastError = null,
+                )
+            )
+            for (event in dao.eventsOf(collectionId)) {
+                dao.updateEvent(
+                    event.copy(
+                        href = url + event.href.substringAfterLast('/'),
+                        etag = null,
+                        dirty = true,
+                        existsOnServer = false,
+                        version = event.version + 1,
+                        syncError = null,
+                    )
+                )
+            }
+        }
+        syncAll()
+    }
+
+    /**
+     * Turns a server calendar into a calendar on this device, with all its events. The server copy
+     * stays as it is, for the other devices and the people who share it, and discovery leaves it
+     * out from now on. Changes that are not uploaded yet stay on this device.
+     */
+    suspend fun stopSyncing(collectionId: Long) {
+        mutex.withLock {
+            val calendar = dao.collection(collectionId) ?: return
+            if (dao.isLocalCollection(collectionId) == true) return@withLock
+            val local =
+                dao.localAccount()?.id
+                    ?: dao.upsertAccount(AccountEntity(baseUrl = "", username = "", local = true))
+            dao.putValue(KeyValueEntity(IGNORED + calendar.url.trimEnd('/'), 1))
+            val url = CalendarStore.LOCAL_URL_PREFIX + UUID.randomUUID() + "/"
+            dao.updateCollection(
+                calendar.copy(
+                    accountId = local,
+                    url = url,
+                    canWrite = true,
+                    manual = false,
+                    syncEnabled = false,
+                    syncToken = null,
+                    ctag = null,
+                    lastSync = null,
+                    lastError = null,
+                )
+            )
+            // A deletion waiting for upload has nothing left to do
+            for (event in dao.pendingEvents(collectionId)) if (event.deleted)
+                dao.deleteEvent(event.id)
+            for (event in dao.eventsOf(collectionId)) {
+                dao.updateEvent(
+                    event.copy(
+                        href = url + event.href.substringAfterLast('/'),
+                        etag = null,
+                        dirty = false,
+                        existsOnServer = false,
+                        syncError = null,
+                    )
+                )
+            }
+        }
+        reminders.reschedule()
+    }
 
     /** Syncs every calendar of every account. Errors are stored on the account and calendar. */
     suspend fun syncAll() {
@@ -188,7 +294,9 @@ class CalendarSyncManager(
      * longer lists are removed, except those added by URL.
      */
     private suspend fun mergeCollections(accountId: Long, found: List<CollectionInfo>) {
-        val events = found.filter { it.supportsEvents }
+        // Calendars whose sync the user stopped stay out
+        val ignored = dao.keysWithPrefix(IGNORED).map { it.removePrefix(IGNORED) }.toSet()
+        val events = found.filter { it.supportsEvents && it.url.trimEnd('/') !in ignored }
         val existing = dao.collections(accountId)
         for (info in events) {
             val match = existing.firstOrNull { sameUrl(it.url, info.url) }
@@ -224,4 +332,21 @@ class CalendarSyncManager(
         )
 
     private fun sameUrl(a: String, b: String) = a.trimEnd('/') == b.trimEnd('/')
+
+    private fun WriteResult.describe(): String =
+        when (this) {
+            is WriteResult.Ok -> "OK"
+            WriteResult.Forbidden -> "The server does not allow new calendars here"
+            WriteResult.Precondition -> "A calendar with this address exists already"
+            WriteResult.NotFound -> "The calendar home was not found"
+            is WriteResult.Failed -> "HTTP ${code ?: "?"} ${message.orEmpty()}".trim()
+        }
+
+    private companion object {
+        /** kv key prefix of the server calendars whose sync the user stopped. */
+        const val IGNORED = "ignored:"
+    }
 }
+
+/** Why a calendar could not start syncing. */
+class StartSyncingException(message: String) : Exception(message)

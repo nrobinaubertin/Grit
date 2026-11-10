@@ -204,6 +204,27 @@ class KtorDavClient(private val client: HttpClient) : DavClient, Closeable {
         DavResource(client, Url(href)).delete(condition.headers()) { WriteResult.Ok(null) }
     }
 
+    override suspend fun createCalendar(
+        url: String,
+        displayName: String,
+        color: Int?,
+    ): WriteResult = write {
+        val colorProperty =
+            color?.let { "<I:calendar-color>#%06X</I:calendar-color>".format(it and 0xFFFFFF) }
+        val body =
+            "<?xml version=\"1.0\" encoding=\"utf-8\"?>" +
+                "<C:mkcalendar xmlns:D=\"DAV:\" xmlns:C=\"urn:ietf:params:xml:ns:caldav\" " +
+                "xmlns:I=\"http://apple.com/ns/ical/\"><D:set><D:prop>" +
+                "<D:displayname>${escapeXml(displayName)}</D:displayname>" +
+                colorProperty.orEmpty() +
+                "<C:supported-calendar-component-set><C:comp name=\"VEVENT\"/>" +
+                "</C:supported-calendar-component-set></D:prop></D:set></C:mkcalendar>"
+        DavResource(client, Url(url)).mkCol(body, "MKCALENDAR") { WriteResult.Ok(null) }
+    }
+
+    private fun escapeXml(text: String): String =
+        text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
+
     override fun close() = client.close()
 
     private suspend fun propfindSelf(url: Url, vararg properties: Property.Name): Response? =

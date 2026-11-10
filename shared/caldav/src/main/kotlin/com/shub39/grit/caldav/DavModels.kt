@@ -113,4 +113,10 @@ interface DavClient {
     suspend fun put(href: String, ics: String, condition: WriteCondition): WriteResult
 
     suspend fun delete(href: String, condition: WriteCondition): WriteResult
+
+    /**
+     * Creates a calendar for events (MKCALENDAR). [url] ends with a slash and does not exist yet.
+     * [color] is ARGB, or null for the server's default.
+     */
+    suspend fun createCalendar(url: String, displayName: String, color: Int?): WriteResult
 }

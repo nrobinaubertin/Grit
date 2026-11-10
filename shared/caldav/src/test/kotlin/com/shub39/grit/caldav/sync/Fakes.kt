@@ -107,6 +107,15 @@ class FakeServer : DavClient {
         serverDelete(href)
         return WriteResult.Ok(null)
     }
+
+    override suspend fun createCalendar(
+        url: String,
+        displayName: String,
+        color: Int?,
+    ): WriteResult {
+        requests += "MKCALENDAR $url $displayName"
+        return if (canWrite) WriteResult.Ok(null) else WriteResult.Forbidden
+    }
 }
 
 /** An in-memory local collection. */

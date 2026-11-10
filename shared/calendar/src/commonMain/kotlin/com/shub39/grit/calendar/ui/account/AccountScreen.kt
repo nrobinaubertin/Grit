@@ -88,6 +88,9 @@ fun AccountScreen(state: AccountState, viewModel: AccountViewModel, onBack: () -
     var changePassword by remember { mutableStateOf(false) }
     var phoneDenied by remember { mutableStateOf(false) }
     val importUi by viewModel.import.collectAsState()
+    val syncToggle by viewModel.syncToggle.collectAsState()
+    var confirmStart by remember { mutableStateOf<CollectionEntity?>(null) }
+    var confirmStop by remember { mutableStateOf<CollectionEntity?>(null) }
     val askCalendarPermission = rememberCalendarReadPermission { granted ->
         phoneDenied = !granted
         viewModel.onPhonePermission()
@@ -118,6 +121,7 @@ fun AccountScreen(state: AccountState, viewModel: AccountViewModel, onBack: () -
                     viewModel,
                     onNew = { newLocal = true },
                     onDelete = { deleteLocal = it },
+                    onStartSyncing = { confirmStart = it },
                 )
                 if (state.phoneSupported) {
                     phoneSection(state, viewModel, phoneDenied, onAllow = askCalendarPermission)
@@ -138,6 +142,7 @@ fun AccountScreen(state: AccountState, viewModel: AccountViewModel, onBack: () -
                         onAddByUrl = { addByUrl = true },
                         onChangePassword = { changePassword = true },
                         onRemove = { confirmRemove = true },
+                        onStopSyncing = { confirmStop = it },
                     )
                 }
                 importSection(onChoose = viewModel::pickIcsFile)
@@ -222,6 +227,53 @@ fun AccountScreen(state: AccountState, viewModel: AccountViewModel, onBack: () -
         )
     }
     importUi?.let { ImportDialog(it, state, viewModel) }
+    confirmStart?.let { calendar ->
+        ConfirmDialog(
+            text = stringResource(Res.string.start_syncing_confirm, calendar.displayName.orEmpty()),
+            confirm = stringResource(Res.string.start_syncing),
+            onConfirm = {
+                confirmStart = null
+                viewModel.startSyncing(calendar.id)
+            },
+            onDismiss = { confirmStart = null },
+        )
+    }
+    confirmStop?.let { calendar ->
+        ConfirmDialog(
+            text = stringResource(Res.string.stop_syncing_confirm, calendar.displayName.orEmpty()),
+            confirm = stringResource(Res.string.stop_syncing),
+            onConfirm = {
+                confirmStop = null
+                viewModel.stopSyncing(calendar.id)
+            },
+            onDismiss = { confirmStop = null },
+        )
+    }
+    syncToggle?.let { toggle ->
+        AlertDialog(
+            onDismissRequest = { if (toggle !is SyncToggleUi.Running) viewModel.closeSyncToggle() },
+            text = {
+                when (toggle) {
+                    SyncToggleUi.Running ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                            Text(
+                                stringResource(Res.string.start_syncing_running),
+                                modifier = Modifier.padding(start = 16.dp),
+                            )
+                        }
+                    is SyncToggleUi.Failed -> Text(toggle.message)
+                }
+            },
+            confirmButton = {
+                if (toggle is SyncToggleUi.Failed) {
+                    TextButton(onClick = viewModel::closeSyncToggle) {
+                        Text(stringResource(Res.string.ok))
+                    }
+                }
+            },
+        )
+    }
     if (addByUrl) AddByUrlDialog(viewModel, onDismiss = { addByUrl = false })
     if (changePassword) ChangePasswordDialog(viewModel, onDismiss = { changePassword = false })
     if (confirmRemove) {
@@ -249,6 +301,23 @@ fun AccountScreen(state: AccountState, viewModel: AccountViewModel, onBack: () -
 }
 
 @Composable
+private fun ConfirmDialog(
+    text: String,
+    confirm: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        text = { Text(text) },
+        confirmButton = { TextButton(onClick = onConfirm) { Text(confirm) } },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(Res.string.cancel)) }
+        },
+    )
+}
+
+@Composable
 private fun SectionTitle(text: String) {
     Text(
         text,
@@ -262,6 +331,7 @@ private fun LazyListScope.localSection(
     viewModel: AccountViewModel,
     onNew: () -> Unit,
     onDelete: (CollectionEntity) -> Unit,
+    onStartSyncing: (CollectionEntity) -> Unit,
 ) {
     item {
         Column {
@@ -277,7 +347,11 @@ private fun LazyListScope.localSection(
         CalendarRow(
             collection = calendar,
             onVisible = { viewModel.setVisible(calendar.id, it) },
-            syncSwitch = null,
+            // Only with a server to sync with
+            syncAction =
+                if (state.account != null) {
+                    stringResource(Res.string.start_syncing) to { onStartSyncing(calendar) }
+                } else null,
             trailing = {
                 IconButton(onClick = { onDelete(calendar) }) {
                     Icon(
@@ -564,6 +638,7 @@ private fun LazyListScope.serverSection(
     onAddByUrl: () -> Unit,
     onChangePassword: () -> Unit,
     onRemove: () -> Unit,
+    onStopSyncing: (CollectionEntity) -> Unit,
 ) {
     val account = state.account ?: return
     item {
@@ -611,7 +686,16 @@ private fun LazyListScope.serverSection(
         CalendarRow(
             collection = collection,
             onVisible = { viewModel.setVisible(collection.id, it) },
-            syncSwitch = { viewModel.setSyncEnabled(collection.id, it) },
+            syncAction =
+                if (collection.syncEnabled) {
+                    stringResource(Res.string.stop_syncing) to { onStopSyncing(collection) }
+                } else {
+                    // Paused by the former "Sync" switch
+                    stringResource(Res.string.start_syncing) to
+                        {
+                            viewModel.startSyncing(collection.id)
+                        }
+                },
             trailing = null,
             onRemove =
                 if (collection.manual) ({ viewModel.removeCollection(collection.id) }) else null,
@@ -686,7 +770,8 @@ private fun ConnectForm(form: AccountForm, viewModel: AccountViewModel) {
 private fun CalendarRow(
     collection: CollectionEntity,
     onVisible: (Boolean) -> Unit,
-    syncSwitch: ((Boolean) -> Unit)?,
+    /** "Start syncing" or "Stop syncing", with its action. */
+    syncAction: Pair<String, () -> Unit>?,
     trailing: (@Composable () -> Unit)?,
     onRemove: (() -> Unit)? = null,
 ) {
@@ -714,9 +799,18 @@ private fun CalendarRow(
                             else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                if (onRemove != null) {
-                    TextButton(onClick = onRemove, contentPadding = PaddingValues(0.dp)) {
-                        Text(stringResource(Res.string.remove))
+                if (syncAction != null || onRemove != null) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        syncAction?.let { (label, action) ->
+                            TextButton(onClick = action, contentPadding = PaddingValues(0.dp)) {
+                                Text(label)
+                            }
+                        }
+                        if (onRemove != null) {
+                            TextButton(onClick = onRemove, contentPadding = PaddingValues(0.dp)) {
+                                Text(stringResource(Res.string.remove))
+                            }
+                        }
                     }
                 }
             }
@@ -725,14 +819,6 @@ private fun CalendarRow(
                 collection.visible,
                 onVisible,
             )
-            if (syncSwitch != null) {
-                LabeledSwitch(
-                    stringResource(Res.string.sync_calendar),
-                    collection.syncEnabled,
-                    syncSwitch,
-                    Modifier.padding(start = 8.dp),
-                )
-            }
             trailing?.invoke()
         }
     }

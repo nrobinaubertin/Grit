@@ -125,6 +125,27 @@ class RadicaleIntegrationTest {
         }
 
     @Test
+    fun `a new calendar shows in discovery`() =
+        runBlocking<Unit> {
+            client("bob").use { dav ->
+                val url = "$baseUrl/bob/${UUID.randomUUID()}/"
+                try {
+                    assertIs<WriteResult.Ok>(
+                        dav.createCalendar(url, "Moved & kept", 0xFF3F51B5.toInt())
+                    )
+                    val found = dav.discover(baseUrl).collections.single { it.url == url }
+                    assertEquals("Moved & kept", found.displayName)
+                    assertTrue(found.canWrite)
+                    assertTrue(found.supportsEvents)
+                    // A second calendar at the same place is refused
+                    assertFalse(dav.createCalendar(url, "Again", null) is WriteResult.Ok)
+                } finally {
+                    dav.delete(url, WriteCondition.None)
+                }
+            }
+        }
+
+    @Test
     fun `two users converge on a shared calendar`() =
         runBlocking<Unit> {
             val aliceDav = client("alice")

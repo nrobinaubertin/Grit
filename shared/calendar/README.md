@@ -8,6 +8,7 @@ This fork of Grit adds a Calendar tab that syncs with a CalDAV server, for examp
 - It keeps calendars on the device only, without a server. These calendars never sync. A hidden local account holds them, so they use the same storage, editor and reminders as synced calendars.
 - It creates, edits and deletes events on calendars that you can write to. A repeating event is edited as a whole series. One occurrence can be deleted on its own.
 - It shows read-only calendars without edit actions. If the server does not give the `DAV:write-content` privilege, the calendar is read-only.
+- It moves a calendar between this device and the server. "Start syncing" on a calendar of the device creates it on the server, with the same name and color, and uploads its events. "Stop syncing" on a server calendar keeps its events on this device only. The server copy stays for the other devices and the people who share it, and Grit leaves it out of later syncs.
 - It imports `.ics` files, for example the export of another calendar app, into a calendar that you choose. A series stays together with its changed occurrences. An event that is already in the calendar (same UID) is updated, so a second import of the same file adds nothing.
 - It shows reminders as Android notifications. The Grit setting that pauses notifications also pauses calendar reminders.
 - It syncs at these times: every 30 minutes, 5 seconds after a local change, at the opening of the tab, and on pull-to-refresh.
@@ -82,7 +83,7 @@ GRIT_SCREENSHOTS=/tmp/grit-shots ./gradlew :shared:calendar:jvmTest --tests '*Sc
 ## Known limits
 
 - One account in the user interface. The database supports more.
-- No new calendars from Grit. Create them on the server, for example in the Radicale web interface.
+- Grit creates a server calendar only through "Start syncing". For an empty one, use the web interface of the server.
 - A single occurrence of a repeating event cannot be edited, only deleted.
 - No day view with hours.
 - If two people change the same event between two syncs, the newer change wins. Grit keeps the other version in the database, but does not show it.

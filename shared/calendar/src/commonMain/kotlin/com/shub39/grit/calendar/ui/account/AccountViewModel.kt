@@ -35,6 +35,7 @@ import grit.shared.calendar.generated.resources.error_no_calendar_at_url
 import grit.shared.calendar.generated.resources.error_wrong_login
 import grit.shared.calendar.generated.resources.import_no_events
 import grit.shared.calendar.generated.resources.import_unreadable
+import grit.shared.calendar.generated.resources.start_syncing_failed
 import io.github.vinceglb.filekit.FileKit
 import io.github.vinceglb.filekit.dialogs.FileKitMode
 import io.github.vinceglb.filekit.dialogs.FileKitType
@@ -87,6 +88,14 @@ data class AccountState(
     val loaded: Boolean = false,
 )
 
+/** A "Start syncing" that runs or failed. */
+@Immutable
+sealed interface SyncToggleUi {
+    data object Running : SyncToggleUi
+
+    data class Failed(val message: String) : SyncToggleUi
+}
+
 /** The steps of an .ics import. */
 @Immutable
 sealed interface ImportUi {
@@ -114,6 +123,9 @@ class AccountViewModel(
     @Provided private val settings: SettingsDatastore,
 ) : ViewModel() {
     private val form = MutableStateFlow(AccountForm())
+
+    /** Null when no "Start syncing" runs. */
+    val syncToggle = MutableStateFlow<SyncToggleUi?>(null)
 
     /** Null when no import is running. */
     val import = MutableStateFlow<ImportUi?>(null)
@@ -203,8 +215,36 @@ class AccountViewModel(
         viewModelScope.launch { syncManager.setVisible(collectionId, visible) }
     }
 
-    fun setSyncEnabled(collectionId: Long, enabled: Boolean) {
-        viewModelScope.launch { syncManager.setSyncEnabled(collectionId, enabled) }
+    /** Creates the calendar on the server and uploads its events. */
+    fun startSyncing(collectionId: Long) {
+        syncToggle.value = SyncToggleUi.Running
+        viewModelScope.launch {
+            syncToggle.value =
+                try {
+                    syncManager.startSyncing(collectionId)
+                    null
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: AuthenticationException) {
+                    SyncToggleUi.Failed(getString(Res.string.error_wrong_login))
+                } catch (e: Exception) {
+                    SyncToggleUi.Failed(
+                        getString(
+                            Res.string.start_syncing_failed,
+                            e.message ?: e::class.simpleName.orEmpty(),
+                        )
+                    )
+                }
+        }
+    }
+
+    /** Keeps the calendar on this device only. The server copy stays. */
+    fun stopSyncing(collectionId: Long) {
+        viewModelScope.launch { syncManager.stopSyncing(collectionId) }
+    }
+
+    fun closeSyncToggle() {
+        syncToggle.value = null
     }
 
     /** Adds a calendar by URL. Calls [onResult] with an error text, or null on success. */
