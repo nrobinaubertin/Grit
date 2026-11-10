@@ -6,7 +6,7 @@ The changes in this fork are completely vibe coded: an AI coding assistant wrote
 
 ## Main changes from Grit
 
-- A Calendar tab that syncs with a CalDAV server, for example Radicale. Two people can share calendars without another sync app such as DAVx5. The tab has month, week and agenda views, categories with colors, reminders, and calendars that stay on the device only. It imports `.ics` files, and the Grit backup file also contains the calendars. On Android, it can also show the calendars of other apps on the phone, read-only. See [shared/calendar/README.md](shared/calendar/README.md) and the server setup in [server/radicale/README.md](server/radicale/README.md).
+- A Calendar tab that syncs with a CalDAV server, for example Radicale. Two people can share calendars without another sync app such as DAVx5. The tab has month, week and agenda views, categories with colors, reminders, and calendars that stay on the device only. It imports `.ics` files, and the Grit backup file also contains the calendars. On Android, it can also import the calendars of other apps on the phone. See [shared/calendar/README.md](shared/calendar/README.md) and the server setup in [server/radicale/README.md](server/radicale/README.md).
 
 ## License
 

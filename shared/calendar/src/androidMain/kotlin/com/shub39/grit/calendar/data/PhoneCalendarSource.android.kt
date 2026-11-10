@@ -17,17 +17,15 @@
 package com.shub39.grit.calendar.data
 
 import android.Manifest
-import android.content.ContentUris
 import android.content.Context
 import android.content.pm.PackageManager
 import android.database.ContentObserver
 import android.database.Cursor
 import android.net.Uri
 import android.provider.CalendarContract
-import android.provider.CalendarContract.Attendees
 import android.provider.CalendarContract.Calendars
 import android.provider.CalendarContract.Events
-import android.provider.CalendarContract.Instances
+import android.provider.CalendarContract.Reminders
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
@@ -37,7 +35,7 @@ import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.withContext
 import org.koin.core.annotation.Single
 
-/** Reads the Android calendar provider. Every query runs on the IO dispatcher. */
+/** Reads the Android calendar provider, never writes it. Every query runs on the IO dispatcher. */
 @Single
 actual class PhoneCalendarSource(private val context: Context) {
     private val resolver
@@ -83,7 +81,6 @@ actual class PhoneCalendarSource(private val context: Context) {
                 Calendars.CALENDAR_DISPLAY_NAME,
                 Calendars.ACCOUNT_NAME,
                 Calendars.CALENDAR_COLOR,
-                Calendars.VISIBLE,
             ),
             selection = "${Calendars.SYNC_EVENTS} = 1",
             sort = "${Calendars.ACCOUNT_NAME}, ${Calendars.CALENDAR_DISPLAY_NAME}",
@@ -92,67 +89,74 @@ actual class PhoneCalendarSource(private val context: Context) {
                 id = cursor.getLong(0),
                 name = cursor.getString(1) ?: cursor.getString(2) ?: "?",
                 accountName = cursor.getString(2),
-                color = opaque(cursor.getInt(3)),
-                visibleInProvider = cursor.getInt(4) == 1,
+                color = cursor.getInt(3) or 0xFF000000.toInt(),
             )
         }
 
-    actual suspend fun instances(from: Long, to: Long): List<PhoneInstance> {
-        val uri =
-            Instances.CONTENT_URI.buildUpon()
-                .also {
-                    ContentUris.appendId(it, from)
-                    ContentUris.appendId(it, to)
-                }
-                .build()
-        return query(
-            uri,
-            arrayOf(
-                Instances._ID,
-                Instances.EVENT_ID,
-                Instances.CALENDAR_ID,
-                Instances.BEGIN,
-                Instances.END,
-                Instances.ALL_DAY,
-                Instances.TITLE,
-                Instances.EVENT_LOCATION,
-                Instances.DISPLAY_COLOR,
-                Instances.CALENDAR_DISPLAY_NAME,
-                Instances.RRULE,
-                Instances.RDATE,
-                Instances.ORIGINAL_ID,
-            ),
-            // Cancelled occurrences and declined invitations are not on the user's schedule
-            selection =
-                "(${Instances.STATUS} IS NULL OR ${Instances.STATUS} != ${Events.STATUS_CANCELED})" +
-                    " AND (${Instances.SELF_ATTENDEE_STATUS} IS NULL OR " +
-                    "${Instances.SELF_ATTENDEE_STATUS} != ${Attendees.ATTENDEE_STATUS_DECLINED})",
-            sort = "${Instances.BEGIN}, ${Instances.END}",
-        ) { cursor ->
-            PhoneInstance(
-                instanceId = cursor.getLong(0),
-                eventId = cursor.getLong(1),
-                calendarId = cursor.getLong(2),
-                begin = cursor.getLong(3),
-                end = cursor.getLong(4),
-                allDay = cursor.getInt(5) == 1,
-                title = cursor.getString(6),
-                location = cursor.getString(7),
-                color = opaque(cursor.getInt(8)),
-                calendarName = cursor.getString(9),
-                recurring = !cursor.isNull(10) || !cursor.isNull(11) || !cursor.isNull(12),
-            )
-        }
-    }
-
-    actual suspend fun details(eventId: Long): PhoneEventDetails? =
-        query(
-                ContentUris.withAppendedId(Events.CONTENT_URI, eventId),
-                arrayOf(Events.DESCRIPTION, Events.RRULE),
-            ) { cursor ->
-                PhoneEventDetails(description = cursor.getString(0), rrule = cursor.getString(1))
+    actual suspend fun events(calendarId: Long): List<PhoneEventRow> {
+        val rows =
+            query(
+                Events.CONTENT_URI,
+                arrayOf(
+                    Events._ID,
+                    Events.UID_2445,
+                    Events.TITLE,
+                    Events.DESCRIPTION,
+                    Events.EVENT_LOCATION,
+                    Events.DTSTART,
+                    Events.DTEND,
+                    Events.DURATION,
+                    Events.ALL_DAY,
+                    Events.EVENT_TIMEZONE,
+                    Events.RRULE,
+                    Events.RDATE,
+                    Events.EXRULE,
+                    Events.EXDATE,
+                    Events.ORIGINAL_ID,
+                    Events.ORIGINAL_INSTANCE_TIME,
+                    Events.ORIGINAL_ALL_DAY,
+                    Events.STATUS,
+                ),
+                selection = "${Events.CALENDAR_ID} = $calendarId AND ${Events.DELETED} = 0",
+                sort = "${Events._ID}",
+            ) { c ->
+                val id = c.getLong(0)
+                PhoneEventRow(
+                    id = id,
+                    uid = c.getString(1),
+                    title = c.getString(2),
+                    description = c.getString(3),
+                    location = c.getString(4),
+                    start = c.getLong(5),
+                    end = if (c.isNull(6)) null else c.getLong(6),
+                    duration = c.getString(7),
+                    allDay = c.getInt(8) == 1,
+                    timeZone = c.getString(9),
+                    rrule = c.getString(10),
+                    rdate = c.getString(11),
+                    exrule = c.getString(12),
+                    exdate = c.getString(13),
+                    originalId = if (c.isNull(14)) null else c.getLong(14),
+                    originalInstanceTime = if (c.isNull(15)) null else c.getLong(15),
+                    originalAllDay = c.getInt(16) == 1,
+                    status = if (c.isNull(17)) null else c.getInt(17),
+                )
             }
-            .firstOrNull()
+        // Reminders by event id, in chunks that keep the query short
+        val reminders = mutableMapOf<Long, MutableList<Int>>()
+        for (chunk in rows.map { it.id }.chunked(500)) {
+            query(
+                Reminders.CONTENT_URI,
+                arrayOf(Reminders.EVENT_ID, Reminders.MINUTES),
+                selection =
+                    "${Reminders.EVENT_ID} IN (${chunk.joinToString(",")}) AND " +
+                        "${Reminders.METHOD} IN (${Reminders.METHOD_DEFAULT}, ${Reminders.METHOD_ALERT})",
+            ) { cursor ->
+                reminders.getOrPut(cursor.getLong(0)) { mutableListOf() } += cursor.getInt(1)
+            }
+        }
+        return rows.map { it.copy(reminderMinutes = reminders[it.id].orEmpty()) }
+    }
 
     /** Runs a query, or returns an empty list without the permission. */
     private suspend fun <T> query(
@@ -173,8 +177,6 @@ actual class PhoneCalendarSource(private val context: Context) {
                 emptyList()
             }
         }
-
-    private fun opaque(color: Int): Int = color or 0xFF000000.toInt()
 
     private companion object {
         const val TAG = "PhoneCalendars"

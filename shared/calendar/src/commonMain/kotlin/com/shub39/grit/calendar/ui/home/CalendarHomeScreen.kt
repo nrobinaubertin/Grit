@@ -181,7 +181,7 @@ fun CalendarHomeScreen(
             calendars = state.calendars,
             onDismiss = { showFilter = false },
             onToggle = { calendar, visible ->
-                onAction(CalendarAction.SetCalendarVisible(calendar.id, visible, calendar.phone))
+                onAction(CalendarAction.SetCalendarVisible(calendar.id, visible))
             },
         )
     }
@@ -559,16 +559,9 @@ private fun CalendarFilterSheet(
                 Checkbox(checked = calendar.visible, onCheckedChange = null)
                 Column(modifier = Modifier.padding(start = 8.dp)) {
                     Text(calendar.name, style = MaterialTheme.typography.bodyLarge)
-                    val detail =
-                        when {
-                            calendar.local -> stringResource(Res.string.on_this_device)
-                            calendar.phone ->
-                                calendar.detail ?: stringResource(Res.string.from_other_apps)
-                            else -> null
-                        }
-                    if (detail != null) {
+                    if (calendar.local) {
                         Text(
-                            detail,
+                            stringResource(Res.string.on_this_device),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

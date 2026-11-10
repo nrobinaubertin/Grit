@@ -31,7 +31,5 @@ actual class PhoneCalendarSource {
 
     actual suspend fun calendars(): List<PhoneCalendar> = emptyList()
 
-    actual suspend fun instances(from: Long, to: Long): List<PhoneInstance> = emptyList()
-
-    actual suspend fun details(eventId: Long): PhoneEventDetails? = null
+    actual suspend fun events(calendarId: Long): List<PhoneEventRow> = emptyList()
 }

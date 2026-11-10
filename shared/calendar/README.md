@@ -11,7 +11,7 @@ This fork of Grit adds a Calendar tab that syncs with a CalDAV server, for examp
 - It imports `.ics` files, for example the export of another calendar app, into a calendar that you choose. A series stays together with its changed occurrences. An event that is already in the calendar (same UID) is updated, so a second import of the same file adds nothing.
 - It shows reminders as Android notifications. The Grit setting that pauses notifications also pauses calendar reminders.
 - It syncs at these times: every 30 minutes, 5 seconds after a local change, at the opening of the tab, and on pull-to-refresh.
-- On Android, it can also show the calendars of other apps, for example Google Calendar or DAVx5. These apps keep their calendars in the Android calendar provider (the shared calendar storage of the phone). Grit only reads these calendars: their events have no edit actions, and the app that owns them shows their reminders. Turn them on under "Calendars from other apps" on the "Calendars and accounts" screen.
+- On Android, it imports the calendars of other apps, for example Google Calendar or DAVx5. These apps keep their calendars in the Android calendar provider (the shared calendar storage of the phone). Choose a calendar under "Calendars from other apps" on the "Calendars and accounts" screen, then a new calendar on this device or one of your calendars as the target. The events become normal Grit events, with their changed occurrences and their reminders. Grit does not see later changes in the other app: import the calendar again to update it.
 
 The desktop app syncs while it runs and has no reminders, like the upstream desktop app.
 
@@ -50,7 +50,7 @@ The calendar module adds its screens through `NavEntryContributor`, which Koin p
   - the CalDAV account, and the switches of its calendars
 
   The password is not in the file. After a restore, enter it again on the "Calendars and accounts" screen, and the server calendars download again. A restore adds and replaces events, but it never deletes them. Changes that are not uploaded yet are not in the file, so sync before you make a backup.
-- If you turn on the calendars of other apps, Grit asks for the calendar read permission. It does not ask before. It does not copy their events into its database, and it never writes to the calendar provider.
+- If you import a calendar of another app, Grit asks for the calendar read permission first. Grit copies only the calendars that you import, and it never writes to the calendar provider.
 
 ## Tests
 

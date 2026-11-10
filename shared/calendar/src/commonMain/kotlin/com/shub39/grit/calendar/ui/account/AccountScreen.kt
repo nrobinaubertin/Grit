@@ -65,7 +65,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.shub39.grit.calendar.data.CategoryColors
-import com.shub39.grit.calendar.data.PhoneCalendarItem
+import com.shub39.grit.calendar.data.PhoneCalendar
 import com.shub39.grit.calendar.data.db.CategoryEntity
 import com.shub39.grit.calendar.data.db.CollectionEntity
 import com.shub39.grit.calendar.ui.Formatting
@@ -90,7 +90,7 @@ fun AccountScreen(state: AccountState, viewModel: AccountViewModel, onBack: () -
     val importUi by viewModel.import.collectAsState()
     val askCalendarPermission = rememberCalendarReadPermission { granted ->
         phoneDenied = !granted
-        if (granted) viewModel.setPhoneEnabled(true)
+        viewModel.onPhonePermission()
     }
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -120,7 +120,7 @@ fun AccountScreen(state: AccountState, viewModel: AccountViewModel, onBack: () -
                     onDelete = { deleteLocal = it },
                 )
                 if (state.phoneSupported) {
-                    phoneSection(state, viewModel, phoneDenied, onTurnOn = askCalendarPermission)
+                    phoneSection(state, viewModel, phoneDenied, onAllow = askCalendarPermission)
                 }
                 categorySection(
                     state,
@@ -369,12 +369,19 @@ private fun LazyListScope.importSection(onChoose: () -> Unit) {
 @Composable
 private fun ImportDialog(step: ImportUi, state: AccountState, viewModel: AccountViewModel) {
     val onThisDevice = stringResource(Res.string.on_this_device)
-    val targets =
-        state.localCalendars.map { it to "${it.displayName.orEmpty()} · $onThisDevice" } +
+    val newName = (step as? ImportUi.Choose)?.newCalendarName
+    // Null stands for a new calendar on this device
+    val targets: List<Pair<Long?, String>> =
+        listOfNotNull(newName?.let { null to stringResource(Res.string.import_new_calendar, it) }) +
+            state.localCalendars.map { it.id to "${it.displayName.orEmpty()} · $onThisDevice" } +
             state.collections
                 .filter { it.canWrite && it.supportsEvents }
-                .map { it to (it.displayName ?: it.url) }
-    var chosen by remember(step) { mutableStateOf(targets.firstOrNull()?.first?.id) }
+                .map { it.id to (it.displayName ?: it.url) }
+    // A second import of a phone calendar goes into the calendar of the first one
+    val initial =
+        state.localCalendars.firstOrNull { newName != null && it.displayName == newName }?.id
+            ?: targets.firstOrNull()?.first
+    var chosen by remember(step) { mutableStateOf(initial) }
     AlertDialog(
         onDismissRequest = { if (step !is ImportUi.Importing) viewModel.closeImport() },
         title = { Text(stringResource(Res.string.import_title)) },
@@ -386,16 +393,12 @@ private fun ImportDialog(step: ImportUi, state: AccountState, viewModel: Account
                     } else {
                         Column {
                             Text(stringResource(Res.string.import_into, step.fileName, step.events))
-                            for ((calendar, label) in targets) {
+                            for ((id, label) in targets) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    modifier =
-                                        Modifier.fillMaxWidth().clickable { chosen = calendar.id },
+                                    modifier = Modifier.fillMaxWidth().clickable { chosen = id },
                                 ) {
-                                    RadioButton(
-                                        selected = chosen == calendar.id,
-                                        onClick = { chosen = calendar.id },
-                                    )
+                                    RadioButton(selected = chosen == id, onClick = { chosen = id })
                                     Text(label, style = MaterialTheme.typography.bodyLarge)
                                 }
                             }
@@ -423,10 +426,7 @@ private fun ImportDialog(step: ImportUi, state: AccountState, viewModel: Account
             when (step) {
                 is ImportUi.Choose ->
                     if (targets.isNotEmpty()) {
-                        TextButton(
-                            onClick = { chosen?.let(viewModel::importInto) },
-                            enabled = chosen != null,
-                        ) {
+                        TextButton(onClick = { viewModel.importInto(chosen) }) {
                             Text(stringResource(Res.string.import_action))
                         }
                     }
@@ -447,12 +447,12 @@ private fun ImportDialog(step: ImportUi, state: AccountState, viewModel: Account
     )
 }
 
-/** The calendars that other apps keep on the phone. Grit only reads them. */
+/** The calendars that other apps keep on the phone, which Grit can import. */
 private fun LazyListScope.phoneSection(
     state: AccountState,
     viewModel: AccountViewModel,
     denied: Boolean,
-    onTurnOn: () -> Unit,
+    onAllow: () -> Unit,
 ) {
     item {
         Column {
@@ -464,8 +464,8 @@ private fun LazyListScope.phoneSection(
             )
         }
     }
-    if (!state.phoneActive) {
-        item { TextButton(onClick = onTurnOn) { Text(stringResource(Res.string.show_other_apps)) } }
+    if (!state.phonePermission) {
+        item { TextButton(onClick = onAllow) { Text(stringResource(Res.string.show_other_apps)) } }
         if (denied) {
             item {
                 Text(
@@ -485,28 +485,23 @@ private fun LazyListScope.phoneSection(
             )
         }
     }
-    items(state.phoneCalendars, key = { "phone-${it.calendar.id}" }) { item ->
-        PhoneCalendarRow(item) { viewModel.setPhoneCalendarVisible(item.calendar.id, it) }
-    }
-    item {
-        TextButton(onClick = { viewModel.setPhoneEnabled(false) }) {
-            Text(stringResource(Res.string.stop_other_apps))
-        }
+    items(state.phoneCalendars, key = { "phone-${it.id}" }) { calendar ->
+        PhoneCalendarRow(calendar) { viewModel.importPhoneCalendar(calendar) }
     }
 }
 
 @Composable
-private fun PhoneCalendarRow(item: PhoneCalendarItem, onVisible: (Boolean) -> Unit) {
+private fun PhoneCalendarRow(calendar: PhoneCalendar, onImport: () -> Unit) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            ColorDot(item.calendar.color)
+            ColorDot(calendar.color)
             Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                Text(item.calendar.name, style = MaterialTheme.typography.bodyLarge)
-                item.calendar.accountName
-                    ?.takeIf { it != item.calendar.name }
+                Text(calendar.name, style = MaterialTheme.typography.bodyLarge)
+                calendar.accountName
+                    ?.takeIf { it != calendar.name }
                     ?.let {
                         Text(
                             it,
@@ -515,7 +510,7 @@ private fun PhoneCalendarRow(item: PhoneCalendarItem, onVisible: (Boolean) -> Un
                         )
                     }
             }
-            LabeledSwitch(stringResource(Res.string.show_in_calendar), item.visible, onVisible)
+            TextButton(onClick = onImport) { Text(stringResource(Res.string.import_action)) }
         }
     }
 }

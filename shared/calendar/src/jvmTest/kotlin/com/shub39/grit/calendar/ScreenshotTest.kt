@@ -341,8 +341,7 @@ class ScreenshotTest {
                 store,
                 manager,
                 com.shub39.grit.calendar.data.PhoneCalendars(
-                    com.shub39.grit.calendar.data.PhoneCalendarSource(),
-                    db,
+                    com.shub39.grit.calendar.data.PhoneCalendarSource()
                 ),
                 FakeSettings,
             )
@@ -388,8 +387,7 @@ class ScreenshotTest {
                 store,
                 manager,
                 com.shub39.grit.calendar.data.PhoneCalendars(
-                    com.shub39.grit.calendar.data.PhoneCalendarSource(),
-                    db,
+                    com.shub39.grit.calendar.data.PhoneCalendarSource()
                 ),
                 FakeSettings,
             )

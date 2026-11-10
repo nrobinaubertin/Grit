@@ -22,8 +22,6 @@ import androidx.lifecycle.viewModelScope
 import com.shub39.grit.calendar.data.CalendarStore
 import com.shub39.grit.calendar.data.CalendarSyncManager
 import com.shub39.grit.calendar.data.CategoryColors
-import com.shub39.grit.calendar.data.PhoneCalendars
-import com.shub39.grit.calendar.data.PhoneInstance
 import com.shub39.grit.calendar.data.SyncScheduler
 import com.shub39.grit.calendar.data.db.InstanceRow
 import com.shub39.grit.calendar.ui.Formatting
@@ -81,16 +79,14 @@ data class DayEvent(
     val originalStart: Long?,
     val recurring: Boolean,
     val category: String?,
-    /** ARGB color of the category or of the phone calendar, or null for the default color. */
+    /** ARGB color of the category, or null for the default color. */
     val color: Int?,
     val calendarName: String?,
     val canWrite: Boolean,
-    /** True for a read-only event from the calendar of another app on the phone. */
-    val phone: Boolean = false,
 ) {
-    /** Unique in lists: Grit and the phone number their occurrences separately. */
-    val key: String
-        get() = if (phone) "p$instanceId" else "g$instanceId"
+    /** Unique in lists. */
+    val key: Long
+        get() = instanceId
 }
 
 /** What the event detail sheet shows. */
@@ -104,10 +100,6 @@ data class CalendarFilterItem(
     val name: String,
     val visible: Boolean,
     val local: Boolean,
-    /** A calendar of another app on the phone. */
-    val phone: Boolean = false,
-    /** Second line in the filter sheet, for example the account of a phone calendar. */
-    val detail: String? = null,
 )
 
 /** Events of the months around the shown month: per day, and in lanes per week row. */
@@ -176,8 +168,7 @@ sealed interface CalendarAction {
 
     data class DeleteOccurrence(val eventId: Long, val originalStart: Long) : CalendarAction
 
-    data class SetCalendarVisible(val id: Long, val visible: Boolean, val phone: Boolean = false) :
-        CalendarAction
+    data class SetCalendarVisible(val id: Long, val visible: Boolean) : CalendarAction
 
     /** Creates a first calendar on this device, from the empty screen. */
     data class CreateLocalCalendar(val name: String) : CalendarAction
@@ -214,7 +205,6 @@ class CalendarViewModel(
     private val store: CalendarStore,
     private val syncManager: CalendarSyncManager,
     private val syncScheduler: SyncScheduler,
-    private val phone: PhoneCalendars,
     @Provided settings: SettingsDatastore,
 ) : ViewModel() {
     private val local = MutableStateFlow(LocalState())
@@ -292,20 +282,14 @@ class CalendarViewModel(
                 store.defaultViewFlow(),
                 ::Triple,
             ),
-            phone.calendars(),
-        ) {
-            (is24Hr, firstDay),
-            accounts,
-            collections,
-            (running, pending, defaultView),
-            phoneCalendars ->
+        ) { (is24Hr, firstDay), accounts, collections, (running, pending, defaultView) ->
             val localAccount = accounts.firstOrNull { it.local }?.id
             val events = collections.filter { it.supportsEvents }
             Meta(
                 defaultMode = CalendarMode.entries.getOrElse(defaultView) { CalendarMode.Month },
                 is24Hr = is24Hr,
                 firstDayOfWeek = firstDay,
-                hasCalendars = collections.isNotEmpty() || phoneCalendars.isNotEmpty(),
+                hasCalendars = collections.isNotEmpty(),
                 hasServer = accounts.any { !it.local },
                 calendars =
                     events.map {
@@ -315,20 +299,7 @@ class CalendarViewModel(
                             visible = it.visible,
                             local = it.accountId == localAccount,
                         )
-                    } +
-                        phoneCalendars.map {
-                            CalendarFilterItem(
-                                id = it.calendar.id,
-                                name = it.calendar.name,
-                                visible = it.visible,
-                                local = false,
-                                phone = true,
-                                detail =
-                                    it.calendar.accountName?.takeIf { account ->
-                                        account != it.calendar.name
-                                    },
-                            )
-                        },
+                    },
                 canCreate = events.any { it.canWrite && it.visible },
                 syncing = running,
                 error =
@@ -410,14 +381,8 @@ class CalendarViewModel(
             is CalendarAction.OpenEvent ->
                 viewModelScope.launch {
                     val event = action.event
-                    val details =
-                        if (event.phone) {
-                            val phoneDetails = phone.details(event.eventId)
-                            EventDetailsUi(event, phoneDetails?.description, phoneDetails?.rrule)
-                        } else {
-                            val stored = store.details(event.eventId) ?: return@launch
-                            EventDetailsUi(event, stored.info.description, stored.info.rrule)
-                        }
+                    val stored = store.details(event.eventId) ?: return@launch
+                    val details = EventDetailsUi(event, stored.info.description, stored.info.rrule)
                     local.update { it.copy(details = details) }
                 }
             CalendarAction.CloseEvent -> local.update { it.copy(details = null) }
@@ -432,10 +397,7 @@ class CalendarViewModel(
                     store.deleteOccurrence(action.eventId, action.originalStart)
                 }
             is CalendarAction.SetCalendarVisible ->
-                viewModelScope.launch {
-                    if (action.phone) phone.setVisible(action.id, action.visible)
-                    else syncManager.setVisible(action.id, action.visible)
-                }
+                viewModelScope.launch { syncManager.setVisible(action.id, action.visible) }
             is CalendarAction.CreateLocalCalendar ->
                 viewModelScope.launch { store.createLocalCalendar(action.name) }
         }
@@ -451,11 +413,8 @@ class CalendarViewModel(
                 store.ensureWindow(from, to)
                 // All-day instances are stored at midnight UTC, so widen the query by one day
                 emitAll(
-                    combine(
-                        store.instances(from - DAY_MS, to + DAY_MS),
-                        phone.instances(from - DAY_MS, to + DAY_MS),
-                    ) { rows, phoneRows ->
-                        rows.map { it.toDayEvent(zone) } + phoneRows.map { it.toDayEvent(zone) }
+                    store.instances(from - DAY_MS, to + DAY_MS).map { rows ->
+                        rows.map { it.toDayEvent(zone) }
                     }
                 )
             }
@@ -493,28 +452,6 @@ private fun coveredDays(
     val lastMoment = if (end > begin) end - 1 else end
     return java.time.Instant.ofEpochMilli(begin).atZone(zone).toLocalDate() to
         java.time.Instant.ofEpochMilli(lastMoment).atZone(zone).toLocalDate()
-}
-
-internal fun PhoneInstance.toDayEvent(zone: ZoneId): DayEvent {
-    val (startDay, endDay) = coveredDays(begin, end, allDay, zone)
-    return DayEvent(
-        instanceId = instanceId,
-        eventId = eventId,
-        title = title ?: "",
-        location = location,
-        begin = begin,
-        end = end,
-        allDay = allDay,
-        startDay = startDay.toKotlinLocalDate(),
-        endDay = endDay.toKotlinLocalDate(),
-        originalStart = null,
-        recurring = recurring,
-        category = null,
-        color = color,
-        calendarName = calendarName,
-        canWrite = false,
-        phone = true,
-    )
 }
 
 internal fun InstanceRow.toDayEvent(zone: ZoneId): DayEvent {

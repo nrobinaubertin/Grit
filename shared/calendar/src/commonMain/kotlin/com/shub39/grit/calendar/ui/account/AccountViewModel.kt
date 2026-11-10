@@ -23,7 +23,7 @@ import com.shub39.grit.caldav.AuthenticationException
 import com.shub39.grit.caldav.ical.EventResource
 import com.shub39.grit.calendar.data.CalendarStore
 import com.shub39.grit.calendar.data.CalendarSyncManager
-import com.shub39.grit.calendar.data.PhoneCalendarItem
+import com.shub39.grit.calendar.data.PhoneCalendar
 import com.shub39.grit.calendar.data.PhoneCalendars
 import com.shub39.grit.calendar.data.db.AccountEntity
 import com.shub39.grit.calendar.data.db.CategoryEntity
@@ -47,6 +47,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -74,9 +75,9 @@ data class AccountState(
     val categories: List<CategoryEntity> = emptyList(),
     /** False on desktop, which has no calendars of other apps. */
     val phoneSupported: Boolean = false,
-    /** True if the user turned on the calendars of other apps and Grit may read them. */
-    val phoneActive: Boolean = false,
-    val phoneCalendars: List<PhoneCalendarItem> = emptyList(),
+    /** True if Grit may read the calendars of other apps, to import them. */
+    val phonePermission: Boolean = false,
+    val phoneCalendars: List<PhoneCalendar> = emptyList(),
     /** The view that the calendar opens with: 0 month, 1 week, 2 agenda. */
     val defaultView: Int = 0,
     /** True if Grit opens on the Calendar tab. */
@@ -90,7 +91,12 @@ data class AccountState(
 @Immutable
 sealed interface ImportUi {
     /** The file is read: the user chooses the calendar. */
-    data class Choose(val fileName: String, val events: Int) : ImportUi
+    data class Choose(
+        val fileName: String,
+        val events: Int,
+        /** If set, a new calendar on this device with this name is a target too. */
+        val newCalendarName: String? = null,
+    ) : ImportUi
 
     data object Importing : ImportUi
 
@@ -99,6 +105,7 @@ sealed interface ImportUi {
     data class Failed(val message: String) : ImportUi
 }
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 @KoinViewModel
 class AccountViewModel(
     private val store: CalendarStore,
@@ -111,6 +118,10 @@ class AccountViewModel(
     /** Null when no import is running. */
     val import = MutableStateFlow<ImportUi?>(null)
     private var importFile: List<EventResource> = emptyList()
+    private var importName: String? = null
+
+    /** Changes when the calendar permission might have changed, to read the calendars again. */
+    private val phoneTick = MutableStateFlow(0)
 
     val state: StateFlow<AccountState> =
         combine(
@@ -119,17 +130,16 @@ class AccountViewModel(
                 store.categoriesFlow(),
                 combine(syncManager.running, form, store.defaultViewFlow(), ::Triple),
                 combine(
-                    phone.active,
-                    phone.calendars(),
+                    phoneTick.flatMapLatest { phone.calendars() },
                     settings.getStartingSectionPref().map { it == Sections.Calendar },
-                    ::Triple,
+                    ::Pair,
                 ),
             ) {
                 accounts,
                 collections,
                 categories,
                 (running, form, defaultView),
-                (phoneActive, phoneCalendars, openOnCalendar) ->
+                (phoneCalendars, openOnCalendar) ->
                 val account = accounts.firstOrNull { !it.local }
                 val local = accounts.firstOrNull { it.local }
                 AccountState(
@@ -138,7 +148,7 @@ class AccountViewModel(
                     localCalendars = collections.filter { it.accountId == local?.id },
                     categories = categories,
                     phoneSupported = phone.supported,
-                    phoneActive = phoneActive,
+                    phonePermission = phone.hasPermission(),
                     phoneCalendars = phoneCalendars,
                     defaultView = defaultView,
                     openOnCalendar = openOnCalendar,
@@ -218,13 +228,31 @@ class AccountViewModel(
         }
     }
 
-    /** Shows or hides the calendars of other apps. Call it after the permission is granted. */
-    fun setPhoneEnabled(enabled: Boolean) {
-        viewModelScope.launch { phone.setEnabled(enabled) }
+    /** Reads the calendars of other apps again, after the permission dialog. */
+    fun onPhonePermission() {
+        phoneTick.update { it + 1 }
     }
 
-    fun setPhoneCalendarVisible(calendarId: Long, visible: Boolean) {
-        viewModelScope.launch { phone.setVisible(calendarId, visible) }
+    /**
+     * Reads a calendar of another app as iCalendar text, then offers the same choice as an .ics
+     * file, with a new calendar on this device as an extra target.
+     */
+    fun importPhoneCalendar(calendar: PhoneCalendar) {
+        import.value = ImportUi.Importing
+        viewModelScope.launch {
+            val resources =
+                withContext(Dispatchers.Default) {
+                    EventResource.splitFile(phone.exportIcs(calendar.id))
+                }
+            import.value =
+                if (resources.isEmpty()) {
+                    ImportUi.Failed(getString(Res.string.import_no_events))
+                } else {
+                    importFile = resources
+                    importName = calendar.name
+                    ImportUi.Choose(calendar.name, resources.size, newCalendarName = calendar.name)
+                }
+        }
     }
 
     /** Off goes back to the Tasks tab, the upstream default. */
@@ -267,19 +295,23 @@ class AccountViewModel(
         }
     }
 
-    fun importInto(collectionId: Long) {
+    /** Imports into [collectionId], or into a new calendar on this device if it is null. */
+    fun importInto(collectionId: Long?) {
         val resources = importFile
+        val name = importName
         importFile = emptyList()
+        importName = null
         import.value = ImportUi.Importing
         viewModelScope.launch {
-            val result =
-                withContext(Dispatchers.Default) { store.importEvents(collectionId, resources) }
+            val target = collectionId ?: store.createLocalCalendar(name ?: "Imported")
+            val result = withContext(Dispatchers.Default) { store.importEvents(target, resources) }
             import.value = ImportUi.Done(result.added, result.updated, result.skipped)
         }
     }
 
     fun closeImport() {
         importFile = emptyList()
+        importName = null
         import.value = null
     }
 

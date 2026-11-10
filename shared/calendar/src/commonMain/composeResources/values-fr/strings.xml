@@ -81,9 +81,8 @@
     <string name="on_this_device_body">Ces calendriers restent sur ce téléphone. Ils ne se synchronisent pas.</string>
     <string name="new_local_calendar">Nouveau calendrier sur cet appareil</string>
     <string name="from_other_apps">Calendriers d’autres applications</string>
-    <string name="from_other_apps_body">Grit peut afficher les calendriers que d’autres applications gardent sur ce téléphone, par exemple Google Agenda ou DAVx5. Grit les lit seulement : modifiez leurs événements dans leur propre application.</string>
-    <string name="show_other_apps">Afficher les calendriers d’autres applications</string>
-    <string name="stop_other_apps">Ne plus les afficher</string>
+    <string name="from_other_apps_body">Copiez dans Grit un calendrier qu’une autre application garde sur ce téléphone, par exemple Google Agenda. Grit ne voit pas les modifications faites ensuite dans l’autre application : importez de nouveau le calendrier pour le mettre à jour.</string>
+    <string name="show_other_apps">Autoriser Grit à les lire</string>
     <string name="no_other_apps">Aucune autre application ne garde de calendrier sur ce téléphone.</string>
     <string name="calendar_permission_denied">Grit ne peut pas lire les calendriers sans l’autorisation Agenda. Accordez-la dans les paramètres de l’application Grit.</string>
     <string name="calendar_name">Nom</string>
@@ -114,4 +113,5 @@
     <string name="default_view_body">La vue que le calendrier affiche à l’ouverture.</string>
     <string name="open_on_calendar">Ouvrir Grit sur le calendrier</string>
     <string name="open_on_calendar_body">Grit affiche d’abord l’onglet Calendrier, au lieu des tâches ou des habitudes.</string>
+    <string name="import_new_calendar">Nouveau calendrier sur cet appareil : %1$s</string>
 </resources>
