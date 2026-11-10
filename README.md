@@ -1,3 +1,15 @@
+# Grit, modified version
+
+This is a modified version of [Grit](https://github.com/shub39/Grit) by shub39, for my own needs. It is not an official Grit release.
+
+## Main changes from Grit
+
+- A Calendar tab that syncs with a CalDAV server, for example Radicale. Two people can share calendars without another sync app such as DAVx5. The tab has month, week and agenda views, categories with colors, reminders, and calendars that stay on the device only. See [shared/calendar/README.md](shared/calendar/README.md) and the server setup in [server/radicale/README.md](server/radicale/README.md).
+
+The rest of this file is the README of the original Grit. Its download links give the original app, without these changes.
+
+---
+
 ![](fastlane/metadata/android/en-US/images/featureGraphic.png)
 
 [<img alt="Get it on Google Play" src="badges/playstore.png" width="180px">](https://play.google.com/store/apps/details?id=com.shub39.grit)
