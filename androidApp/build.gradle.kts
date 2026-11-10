@@ -27,8 +27,13 @@ plugins {
 }
 
 val appName = "Grit"
-val appVersionCode = 6410
-val appVersionName = "6.4.1"
+// Fork version: raise it following semver with every change (feature: minor, fix: patch)
+val appVersionName = "7.0.0"
+// major * 10000 + minor * 100 + patch, always above upstream's 6410
+val appVersionCode =
+    appVersionName.split(".").map(String::toInt).let { (major, minor, patch) ->
+        major * 10000 + minor * 100 + patch
+    }
 
 val gitHash = execute("git", "rev-parse", "HEAD").take(7)
 
