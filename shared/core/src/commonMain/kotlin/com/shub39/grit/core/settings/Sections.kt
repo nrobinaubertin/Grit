@@ -19,4 +19,6 @@ package com.shub39.grit.core.settings
 enum class Sections {
     Tasks,
     Habits,
+    /** The Calendar tab of the fork. */
+    Calendar,
 }

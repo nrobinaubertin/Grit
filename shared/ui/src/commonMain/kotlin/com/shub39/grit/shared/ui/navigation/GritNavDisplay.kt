@@ -72,6 +72,7 @@ fun GritNavDisplay(
                     when (globalState.startingSection) {
                         Sections.Tasks -> TaskList
                         Sections.Habits -> HabitsList
+                        Sections.Calendar -> CalendarTab
                     }
             )
         }

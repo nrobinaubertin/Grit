@@ -112,4 +112,6 @@
     <string name="display">Affichage</string>
     <string name="default_view">Vue par défaut</string>
     <string name="default_view_body">La vue que le calendrier affiche à l’ouverture.</string>
+    <string name="open_on_calendar">Ouvrir Grit sur le calendrier</string>
+    <string name="open_on_calendar_body">Grit affiche d’abord l’onglet Calendrier, au lieu des tâches ou des habitudes.</string>
 </resources>

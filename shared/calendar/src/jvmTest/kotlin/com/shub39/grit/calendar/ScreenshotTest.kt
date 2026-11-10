@@ -344,6 +344,7 @@ class ScreenshotTest {
                     com.shub39.grit.calendar.data.PhoneCalendarSource(),
                     db,
                 ),
+                FakeSettings,
             )
         shoot(
             "calendar-account",
@@ -390,6 +391,7 @@ class ScreenshotTest {
                     com.shub39.grit.calendar.data.PhoneCalendarSource(),
                     db,
                 ),
+                FakeSettings,
             )
         shoot(
             "calendar-account-local",

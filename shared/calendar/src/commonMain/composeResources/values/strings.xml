@@ -112,4 +112,6 @@
     <string name="display">Display</string>
     <string name="default_view">Default view</string>
     <string name="default_view_body">The view that the calendar shows when it opens.</string>
+    <string name="open_on_calendar">Open Grit on the calendar</string>
+    <string name="open_on_calendar_body">Grit shows the Calendar tab first, instead of the tasks or the habits.</string>
 </resources>

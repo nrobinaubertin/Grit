@@ -112,7 +112,7 @@ fun AccountScreen(state: AccountState, viewModel: AccountViewModel, onBack: () -
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                displaySection(state.defaultView, viewModel::setDefaultView)
+                displaySection(state, viewModel)
                 localSection(
                     state,
                     viewModel,
@@ -292,7 +292,7 @@ private fun LazyListScope.localSection(
 }
 
 /** Choices about how the calendar looks. */
-private fun LazyListScope.displaySection(defaultView: Int, onDefaultView: (Int) -> Unit) {
+private fun LazyListScope.displaySection(state: AccountState, viewModel: AccountViewModel) {
     item {
         Column {
             SectionTitle(stringResource(Res.string.display))
@@ -312,7 +312,7 @@ private fun LazyListScope.displaySection(defaultView: Int, onDefaultView: (Int) 
             // The same order as the selector of the calendar: month, week, agenda
             LightSelector(
                 options = listOf(0, 1, 2),
-                selected = defaultView,
+                selected = state.defaultView,
                 label = { view ->
                     stringResource(
                         when (view) {
@@ -322,9 +322,31 @@ private fun LazyListScope.displaySection(defaultView: Int, onDefaultView: (Int) 
                         }
                     )
                 },
-                onSelect = onDefaultView,
+                onSelect = viewModel::setDefaultView,
                 modifier = Modifier.fillMaxWidth(),
             )
+        }
+    }
+    item {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier =
+                Modifier.fillMaxWidth().clickable {
+                    viewModel.setOpenOnCalendar(!state.openOnCalendar)
+                },
+        ) {
+            Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                Text(
+                    stringResource(Res.string.open_on_calendar),
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+                Text(
+                    stringResource(Res.string.open_on_calendar_body),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(checked = state.openOnCalendar, onCheckedChange = viewModel::setOpenOnCalendar)
         }
     }
 }
