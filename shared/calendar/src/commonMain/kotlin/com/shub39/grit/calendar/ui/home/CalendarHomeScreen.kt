@@ -39,6 +39,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -93,12 +94,21 @@ fun CalendarHomeScreen(
 ) {
     LaunchedEffect(Unit) { onAction(CalendarAction.Opened) }
     var showFilter by remember { mutableStateOf(false) }
+    var showMonthPicker by remember { mutableStateOf(false) }
 
     // Surface sets the content color, so that texts follow the theme
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        // Nothing until the default view is known, so that the screen never switches views
+        if (!state.ready) return@Surface
         Box(modifier = Modifier.fillMaxSize()) {
             Column(modifier = Modifier.fillMaxSize()) {
-                CalendarTopBar(state, onAction, onOpenAccount, onFilter = { showFilter = true })
+                CalendarTopBar(
+                    state,
+                    onAction,
+                    onOpenAccount,
+                    onFilter = { showFilter = true },
+                    onTitle = { showMonthPicker = true },
+                )
                 val defaultName = stringResource(Res.string.default_local_calendar)
                 when {
                     !state.hasCalendars ->
@@ -149,6 +159,23 @@ fun CalendarHomeScreen(
         }
     }
 
+    if (showMonthPicker) {
+        MonthPickerDialog(
+            current =
+                when (state.mode) {
+                    CalendarMode.Month -> state.month
+                    CalendarMode.Week -> YearMonth(state.week.year, state.week.month)
+                    CalendarMode.Agenda ->
+                        YearMonth(state.agendaStart.year, state.agendaStart.month)
+                },
+            today = state.today,
+            onPick = {
+                showMonthPicker = false
+                onAction(CalendarAction.JumpTo(it))
+            },
+            onDismiss = { showMonthPicker = false },
+        )
+    }
     if (showFilter) {
         CalendarFilterSheet(
             calendars = state.calendars,
@@ -234,7 +261,7 @@ private fun CalendarContent(
             }
             if (shown(CalendarMode.Agenda)) {
                 Box(Modifier.layoutId(CalendarMode.Agenda)) {
-                    AgendaView(state.agenda, state.today, state.is24Hr, onAction)
+                    AgendaView(state.agenda, state.agendaStart, state.today, state.is24Hr, onAction)
                 }
             }
         },
@@ -252,6 +279,7 @@ private fun CalendarTopBar(
     onAction: (CalendarAction) -> Unit,
     onOpenAccount: () -> Unit,
     onFilter: () -> Unit,
+    onTitle: () -> Unit,
 ) {
     Column {
         LightTopBar(
@@ -262,6 +290,7 @@ private fun CalendarTopBar(
                         Formatting.month(YearMonth(state.week.year, state.week.month))
                     CalendarMode.Agenda -> stringResource(Res.string.agenda)
                 },
+            onTitleClick = if (state.hasCalendars) onTitle else null,
             actions = {
                 TextButton(onClick = { onAction(CalendarAction.Today) }) {
                     Text(stringResource(Res.string.today))
@@ -402,11 +431,19 @@ private fun MonthView(
 @Composable
 private fun AgendaView(
     agenda: List<Pair<LocalDate, List<DayEvent>>>,
+    start: LocalDate,
     today: LocalDate,
     is24Hr: Boolean,
     onAction: (CalendarAction) -> Unit,
 ) {
-    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 120.dp)) {
+    val listState = rememberLazyListState()
+    // A jump to another month starts the list again from its top
+    LaunchedEffect(start) { listState.scrollToItem(0) }
+    LazyColumn(
+        state = listState,
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = 120.dp),
+    ) {
         if (agenda.isEmpty()) item { EmptyDay() }
         for ((date, events) in agenda) {
             item(key = "day-$date") {

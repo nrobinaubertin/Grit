@@ -41,6 +41,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import org.koin.core.annotation.Single
 
 /** An event with the data that the detail sheet and the editor need. */
@@ -61,6 +63,11 @@ class CalendarStore(private val db: CalendarDatabase) {
 
     /** Emits after every local edit, so that a sync can be scheduled. */
     val localChanges: SharedFlow<Unit> = _localChanges.asSharedFlow()
+
+    /** Asks for a sync soon, as after a local edit. For example after a restore. */
+    fun requestSync() {
+        _localChanges.tryEmit(Unit)
+    }
 
     val zone: ZoneId
         get() = ZoneId.systemDefault()
@@ -108,6 +115,18 @@ class CalendarStore(private val db: CalendarDatabase) {
     // --- categories ---
 
     fun categoriesFlow() = dao.categoriesFlow()
+
+    // --- display ---
+
+    /** The view that the calendar opens with: 0 for month, 1 for week, 2 for agenda. */
+    fun defaultViewFlow(): Flow<Int> =
+        dao.valuesFlow(DEFAULT_VIEW)
+            .map { rows -> rows.firstOrNull { it.key == DEFAULT_VIEW }?.value?.toInt() ?: 0 }
+            .distinctUntilChanged()
+
+    suspend fun setDefaultView(view: Int) {
+        dao.putValue(KeyValueEntity(DEFAULT_VIEW, view.toLong()))
+    }
 
     suspend fun createCategory(name: String, color: String) {
         dao.upsertCategory(CategoryEntity(name.trim(), color))
@@ -477,6 +496,7 @@ class CalendarStore(private val db: CalendarDatabase) {
         const val LOCAL_URL_PREFIX = "local:"
 
         private const val CATEGORIES_INDEXED = "categories_indexed"
+        private const val DEFAULT_VIEW = "view.default"
         private const val WINDOW_START = "window_start"
         private const val WINDOW_END = "window_end"
         private val WINDOW_BEFORE = 92.days

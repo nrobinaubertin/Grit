@@ -22,15 +22,11 @@ import com.shub39.grit.caldav.ical.EventDraft
 import com.shub39.grit.caldav.ical.IcalTime
 import com.shub39.grit.calendar.data.CalendarBackup
 import com.shub39.grit.calendar.data.CalendarStore
-import com.shub39.grit.calendar.data.CalendarSyncManager
-import com.shub39.grit.calendar.data.CredentialStore
 import com.shub39.grit.calendar.data.ReminderScheduler
-import com.shub39.grit.calendar.data.SyncScheduler
 import com.shub39.grit.calendar.data.db.AccountEntity
 import com.shub39.grit.calendar.data.db.CalendarDatabase
 import com.shub39.grit.calendar.data.db.CategoryEntity
 import com.shub39.grit.calendar.data.db.CollectionEntity
-import java.nio.file.Files
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -45,22 +41,13 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 
 class CalendarBackupTest {
-    init {
-        // The desktop credential store must not touch the real Grit folder
-        System.setProperty(
-            "grit.calendar.dir",
-            Files.createTempDirectory("grit-backup-test").toString(),
-        )
-    }
-
     private val databases = mutableListOf<CalendarDatabase>()
 
     private class Device(val db: CalendarDatabase) {
         val store = CalendarStore(db)
         val dao = db.calendarDao()
-        private val reminders = ReminderScheduler()
-        private val manager = CalendarSyncManager(db, store, CredentialStore(), reminders)
-        val backup = CalendarBackup(db, store, reminders, SyncScheduler(manager, store))
+        // No SyncScheduler: its background loop would outlive the database of the test
+        val backup = CalendarBackup(db, store, ReminderScheduler())
     }
 
     private fun device(): Device =

@@ -127,6 +127,8 @@ data class CalendarUiState(
     val monthData: MonthData = MonthData(),
     val weeks: Map<LocalDate, WeekData> = emptyMap(),
     val agenda: List<Pair<LocalDate, List<DayEvent>>> = emptyList(),
+    /** First day of the agenda: today, or the first day of a month the user jumped to. */
+    val agendaStart: LocalDate = today(),
     /** False until the user creates a calendar on this device or connects a server. */
     val hasCalendars: Boolean = true,
     val hasServer: Boolean = false,
@@ -138,6 +140,8 @@ data class CalendarUiState(
     val is24Hr: Boolean = true,
     val firstDayOfWeek: DayOfWeek = DayOfWeek.MONDAY,
     val details: EventDetailsUi? = null,
+    /** False until the first state with the events and the default view is ready. */
+    val ready: Boolean = true,
 ) {
     val eventsByDay: Map<LocalDate, List<DayEvent>>
         get() = monthData.byDay
@@ -156,6 +160,9 @@ sealed interface CalendarAction {
     data class SetMode(val mode: CalendarMode) : CalendarAction
 
     data object Today : CalendarAction
+
+    /** Jumps every view to [month]: to today in the current month, else to its first day. */
+    data class JumpTo(val month: YearMonth) : CalendarAction
 
     data object Refresh : CalendarAction
 
@@ -177,16 +184,19 @@ sealed interface CalendarAction {
 }
 
 private data class LocalState(
-    val mode: CalendarMode = CalendarMode.Month,
+    /** Null until the user picks a view: the default view applies. */
+    val mode: CalendarMode? = null,
     val month: YearMonth = today().yearMonth,
     /** First day of the week shown in the week view, or null for the week of the selection. */
     val week: LocalDate? = null,
     val selectedDate: LocalDate = today(),
+    val agendaStart: LocalDate = today(),
     val agendaDays: Int = AGENDA_PAGE_DAYS,
     val details: EventDetailsUi? = null,
 )
 
 private class Meta(
+    val defaultMode: CalendarMode,
     val is24Hr: Boolean,
     val firstDayOfWeek: DayOfWeek,
     val hasCalendars: Boolean,
@@ -261,10 +271,9 @@ class CalendarViewModel(
 
     private val agendaEvents: Flow<List<Pair<LocalDate, List<DayEvent>>>> =
         local
-            .map { it.agendaDays }
+            .map { it.agendaStart to it.agendaDays }
             .distinctUntilChanged()
-            .flatMapLatest { days ->
-                val first = today()
+            .flatMapLatest { (first, days) ->
                 val last = first.plus(DatePeriod(days = days))
                 eventsBetween(first, last).map { events ->
                     byDay(events, first, last).toList().sortedBy { it.first }
@@ -277,12 +286,23 @@ class CalendarViewModel(
             combine(settings.getIs24Hr(), firstDayOfWeek, ::Pair),
             store.accountsFlow(),
             store.collectionsFlow(),
-            combine(syncManager.running, store.pendingCountFlow(), ::Pair),
+            combine(
+                syncManager.running,
+                store.pendingCountFlow(),
+                store.defaultViewFlow(),
+                ::Triple,
+            ),
             phone.calendars(),
-        ) { (is24Hr, firstDay), accounts, collections, (running, pending), phoneCalendars ->
+        ) {
+            (is24Hr, firstDay),
+            accounts,
+            collections,
+            (running, pending, defaultView),
+            phoneCalendars ->
             val localAccount = accounts.firstOrNull { it.local }?.id
             val events = collections.filter { it.supportsEvents }
             Meta(
+                defaultMode = CalendarMode.entries.getOrElse(defaultView) { CalendarMode.Month },
                 is24Hr = is24Hr,
                 firstDayOfWeek = firstDay,
                 hasCalendars = collections.isNotEmpty() || phoneCalendars.isNotEmpty(),
@@ -324,7 +344,7 @@ class CalendarViewModel(
         combine(local, monthData, weekData, agendaEvents, meta) { local, month, weeks, agenda, meta
                 ->
                 CalendarUiState(
-                    mode = local.mode,
+                    mode = local.mode ?: meta.defaultMode,
                     month = local.month,
                     week = local.week ?: startOfWeek(local.selectedDate, meta.firstDayOfWeek),
                     selectedDate = local.selectedDate,
@@ -332,6 +352,7 @@ class CalendarViewModel(
                     monthData = month,
                     weeks = weeks,
                     agenda = agenda,
+                    agendaStart = local.agendaStart,
                     hasCalendars = meta.hasCalendars,
                     hasServer = meta.hasServer,
                     calendars = meta.calendars,
@@ -344,7 +365,11 @@ class CalendarViewModel(
                     details = local.details,
                 )
             }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), CalendarUiState())
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(5000),
+                CalendarUiState(ready = false),
+            )
 
     fun onAction(action: CalendarAction) {
         when (action) {
@@ -358,7 +383,26 @@ class CalendarViewModel(
             is CalendarAction.SetMode -> local.update { it.copy(mode = action.mode) }
             CalendarAction.Today ->
                 local.update {
-                    it.copy(selectedDate = today(), month = today().yearMonth, week = null)
+                    it.copy(
+                        selectedDate = today(),
+                        month = today().yearMonth,
+                        week = null,
+                        agendaStart = today(),
+                        agendaDays = AGENDA_PAGE_DAYS,
+                    )
+                }
+            is CalendarAction.JumpTo ->
+                local.update {
+                    val date =
+                        if (action.month == today().yearMonth) today()
+                        else LocalDate(action.month.year, action.month.month, 1)
+                    it.copy(
+                        selectedDate = date,
+                        month = action.month,
+                        week = null,
+                        agendaStart = date,
+                        agendaDays = AGENDA_PAGE_DAYS,
+                    )
                 }
             CalendarAction.Refresh -> viewModelScope.launch { syncManager.syncAll() }
             CalendarAction.LoadMoreAgenda ->

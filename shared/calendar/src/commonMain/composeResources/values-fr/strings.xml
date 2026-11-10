@@ -107,4 +107,9 @@
     <string name="import_unreadable">Ce fichier n’est pas un fichier iCalendar.</string>
     <string name="import_no_events">Ce fichier ne contient aucun événement.</string>
     <string name="import_no_target">Aucun calendrier n’accepte de nouveaux événements. Créez d’abord un calendrier sur cet appareil.</string>
+    <string name="previous_year">Année précédente</string>
+    <string name="next_year">Année suivante</string>
+    <string name="display">Affichage</string>
+    <string name="default_view">Vue par défaut</string>
+    <string name="default_view_body">La vue que le calendrier affiche à l’ouverture.</string>
 </resources>

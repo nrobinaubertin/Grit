@@ -69,6 +69,7 @@ import com.shub39.grit.calendar.data.PhoneCalendarItem
 import com.shub39.grit.calendar.data.db.CategoryEntity
 import com.shub39.grit.calendar.data.db.CollectionEntity
 import com.shub39.grit.calendar.ui.Formatting
+import com.shub39.grit.calendar.ui.LightSelector
 import com.shub39.grit.calendar.ui.LightTopBar
 import grit.shared.calendar.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
@@ -111,6 +112,7 @@ fun AccountScreen(state: AccountState, viewModel: AccountViewModel, onBack: () -
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                displaySection(state.defaultView, viewModel::setDefaultView)
                 localSection(
                     state,
                     viewModel,
@@ -287,6 +289,44 @@ private fun LazyListScope.localSection(
         )
     }
     item { TextButton(onClick = onNew) { Text(stringResource(Res.string.new_local_calendar)) } }
+}
+
+/** Choices about how the calendar looks. */
+private fun LazyListScope.displaySection(defaultView: Int, onDefaultView: (Int) -> Unit) {
+    item {
+        Column {
+            SectionTitle(stringResource(Res.string.display))
+            Text(
+                stringResource(Res.string.default_view_body),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+    item {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                stringResource(Res.string.default_view),
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            // The same order as the selector of the calendar: month, week, agenda
+            LightSelector(
+                options = listOf(0, 1, 2),
+                selected = defaultView,
+                label = { view ->
+                    stringResource(
+                        when (view) {
+                            1 -> Res.string.week
+                            2 -> Res.string.agenda
+                            else -> Res.string.month
+                        }
+                    )
+                },
+                onSelect = onDefaultView,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
 }
 
 private fun LazyListScope.importSection(onChoose: () -> Unit) {

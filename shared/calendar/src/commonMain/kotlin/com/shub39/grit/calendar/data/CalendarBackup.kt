@@ -84,7 +84,6 @@ class CalendarBackup(
     db: CalendarDatabase,
     private val store: CalendarStore,
     private val reminders: ReminderScheduler,
-    private val syncScheduler: SyncScheduler,
 ) : BackupContributor {
     private val dao = db.calendarDao()
     private val json = Json { ignoreUnknownKeys = true }
@@ -146,7 +145,7 @@ class CalendarBackup(
         restoreLocalCalendars(backup.localCalendars)
         restoreAccount(backup.accounts.firstOrNull())
         reminders.reschedule()
-        syncScheduler.requestSync()
+        store.requestSync()
     }
 
     /** Calendars with the same URL merge: their events are added or replaced, never removed. */

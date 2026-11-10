@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.TextAutoSize
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -44,6 +45,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import grit.shared.calendar.generated.resources.Res
+import grit.shared.calendar.generated.resources.arrow_drop_down
+import org.jetbrains.compose.resources.vectorResource
 
 // Light versions of Material components for the calendar screens. Material's top app bar and
 // segmented buttons handle scrolling, colors and animations that these screens do not use, and
@@ -55,6 +59,8 @@ internal fun LightTopBar(
     title: String,
     modifier: Modifier = Modifier,
     navigation: (@Composable () -> Unit)? = null,
+    /** If set, the title shows a small arrow and opens something on a tap. */
+    onTitleClick: (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     Row(
@@ -63,28 +69,49 @@ internal fun LightTopBar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (navigation != null) navigation() else Spacer(Modifier.width(12.dp))
-        // Long titles, for example in French, shrink to fit. Clip, not Ellipsis: auto-size detects
-        // an ellipsis only on Android. With one line, words that still do not fit are hidden whole.
-        val titleStyle = MaterialTheme.typography.titleLarge
-        BasicText(
-            text = title,
-            style =
-                titleStyle.copy(fontWeight = FontWeight.Bold, color = LocalContentColor.current),
-            maxLines = 1,
-            overflow = TextOverflow.Clip,
-            autoSize =
-                TextAutoSize.StepBased(
-                    minFontSize = 14.sp,
-                    maxFontSize = titleStyle.fontSize,
-                    stepSize = 1.sp,
-                ),
-            modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier =
+                Modifier.weight(1f)
+                    .padding(horizontal = 4.dp)
+                    .clip(TitleShape)
+                    .then(
+                        if (onTitleClick != null) Modifier.clickable(onClick = onTitleClick)
+                        else Modifier
+                    ),
+        ) {
+            // Long titles, for example in French, shrink to fit. Clip, not Ellipsis: auto-size
+            // detects
+            // an ellipsis only on Android. With one line, words that still do not fit are hidden
+            // whole.
+            val titleStyle = MaterialTheme.typography.titleLarge
+            BasicText(
+                text = title,
+                style =
+                    titleStyle.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = LocalContentColor.current,
+                    ),
+                maxLines = 1,
+                overflow = TextOverflow.Clip,
+                autoSize =
+                    TextAutoSize.StepBased(
+                        minFontSize = 14.sp,
+                        maxFontSize = titleStyle.fontSize,
+                        stepSize = 1.sp,
+                    ),
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            if (onTitleClick != null) {
+                Icon(vectorResource(Res.drawable.arrow_drop_down), contentDescription = null)
+            }
+        }
         actions()
     }
 }
 
 private val SelectorShape = RoundedCornerShape(50)
+private val TitleShape = RoundedCornerShape(8.dp)
 
 /** A row of mutually exclusive options. */
 @Composable

@@ -72,6 +72,18 @@ object Formatting {
             .format(pattern("LLLL yyyy"))
             .replaceFirstChar { it.titlecase(locale) }
 
+    /** Short month name for a picker, for example "Nov" or "nov.". */
+    fun monthShort(month: kotlinx.datetime.Month): String {
+        val javaMonth = java.time.Month.of(month.ordinal + 1)
+        val standalone =
+            javaMonth.getDisplayName(java.time.format.TextStyle.SHORT_STANDALONE, locale)
+        // Some platforms give a number for the standalone form
+        val name =
+            if (standalone.any { it.isLetter() }) standalone
+            else javaMonth.getDisplayName(java.time.format.TextStyle.SHORT, locale)
+        return name.replaceFirstChar { it.titlecase(locale) }
+    }
+
     /** Short weekday name, for example "Mon". */
     fun weekday(day: kotlinx.datetime.DayOfWeek): String =
         java.time.DayOfWeek.of(day.ordinal + 1)

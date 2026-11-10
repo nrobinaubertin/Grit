@@ -73,6 +73,8 @@ data class AccountState(
     /** True if the user turned on the calendars of other apps and Grit may read them. */
     val phoneActive: Boolean = false,
     val phoneCalendars: List<PhoneCalendarItem> = emptyList(),
+    /** The view that the calendar opens with: 0 month, 1 week, 2 agenda. */
+    val defaultView: Int = 0,
     val form: AccountForm = AccountForm(),
     val syncing: Boolean = false,
     val loaded: Boolean = false,
@@ -108,9 +110,14 @@ class AccountViewModel(
                 store.accountsFlow(),
                 store.collectionsFlow(),
                 store.categoriesFlow(),
-                combine(syncManager.running, form, ::Pair),
+                combine(syncManager.running, form, store.defaultViewFlow(), ::Triple),
                 combine(phone.active, phone.calendars(), ::Pair),
-            ) { accounts, collections, categories, (running, form), (phoneActive, phoneCalendars) ->
+            ) {
+                accounts,
+                collections,
+                categories,
+                (running, form, defaultView),
+                (phoneActive, phoneCalendars) ->
                 val account = accounts.firstOrNull { !it.local }
                 val local = accounts.firstOrNull { it.local }
                 AccountState(
@@ -121,6 +128,7 @@ class AccountViewModel(
                     phoneSupported = phone.supported,
                     phoneActive = phoneActive,
                     phoneCalendars = phoneCalendars,
+                    defaultView = defaultView,
                     form = form,
                     syncing = running,
                     loaded = true,
@@ -204,6 +212,10 @@ class AccountViewModel(
 
     fun setPhoneCalendarVisible(calendarId: Long, visible: Boolean) {
         viewModelScope.launch { phone.setVisible(calendarId, visible) }
+    }
+
+    fun setDefaultView(view: Int) {
+        viewModelScope.launch { store.setDefaultView(view) }
     }
 
     /** Opens the file picker, then reads and splits the chosen .ics file. */
