@@ -4,7 +4,7 @@ This fork of Grit adds a Calendar tab that syncs with a CalDAV server, for examp
 
 ## What it does
 
-- It shows a month grid with the events of the selected day, and an agenda list.
+- It shows a month grid with the events of the selected day, a week view with hours, and an agenda list.
 - It keeps calendars on the device only, without a server. These calendars never sync. A hidden local account holds them, so they use the same storage, editor and reminders as synced calendars.
 - It creates, edits and deletes events on calendars that you can write to. A repeating event is edited as a whole series. One occurrence can be deleted on its own.
 - It shows read-only calendars without edit actions. If the server does not give the `DAV:write-content` privilege, the calendar is read-only.
@@ -49,10 +49,11 @@ Run the unit tests:
 ./gradlew :shared:caldav:test :shared:calendar:jvmTest
 ```
 
-Run the integration tests against the development server in `server/radicale`:
+Run the integration tests against the development server in `server/radicale` (see its README for the Python setup):
 
 ```sh
-server/radicale/run-dev.sh
+docker compose -f server/radicale/compose.yaml up -d
+server/radicale/seed-dev.sh
 RADICALE_URL=http://127.0.0.1:5232 ./gradlew :shared:caldav:test :shared:calendar:jvmTest
 ```
 
@@ -69,5 +70,6 @@ GRIT_SCREENSHOTS=/tmp/grit-shots ./gradlew :shared:calendar:jvmTest --tests '*Sc
 - One account in the user interface. The database supports more.
 - No new calendars from Grit. Create them on the server, for example in the Radicale web interface.
 - A single occurrence of a repeating event cannot be edited, only deleted.
-- No week or day view with hours.
+- No day view with hours.
+- If two people change the same event between two syncs, the newer change wins. Grit keeps the other version in the database, but does not show it.
 - No invitations or attendees.

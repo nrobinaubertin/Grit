@@ -1,0 +1,32 @@
+# Radicale development server in a container, with the same configuration as run-dev.sh.
+#
+#   docker compose -f server/radicale/compose.yaml up -d
+#   server/radicale/seed-dev.sh
+#
+# The data stays in the volume "radicale-data" until you run "down -v".
+# The container runs as uid 1000, so the mounted files must be readable by that uid.
+name: grit-radicale
+
+services:
+  radicale:
+    image: ghcr.io/kozea/radicale:3.9.0
+    command:
+      - --config=/etc/radicale/config
+      - --hosts=0.0.0.0:5232
+      - --auth-htpasswd-filename=/etc/radicale/users
+      - --rights-file=/etc/radicale/rights
+      - --storage-filesystem-folder=/var/lib/radicale/collections
+      - --sharing-database-path=/var/lib/radicale/sharing.csv
+    ports:
+      # Only this machine can connect. A phone connects through "adb reverse tcp:5232 tcp:5232".
+      - "127.0.0.1:5232:5232"
+    volumes:
+      - ./config:/etc/radicale/config:ro
+      - ./users:/etc/radicale/users:ro
+      - ./rights:/etc/radicale/rights:ro
+      - radicale-data:/var/lib/radicale
+    mem_limit: 128m
+    restart: unless-stopped
+
+volumes:
+  radicale-data:

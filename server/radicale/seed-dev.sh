@@ -8,6 +8,24 @@ set -eu
 
 base=${1:-http://127.0.0.1:5232}
 
+# A container needs a few seconds to start
+tries=0
+until curl -s -o /dev/null "$base/"; do
+    tries=$((tries + 1))
+    if [ $tries -gt 100 ]; then
+        echo "Radicale does not answer on $base" >&2
+        exit 1
+    fi
+    sleep 0.2
+done
+
+# A server with persistent storage (compose.yaml) keeps the data of an earlier run
+status=$(curl -s -o /dev/null -w '%{http_code}' -u alice:alice -X PROPFIND -H "Depth: 0" "$base/alice/personal/")
+if [ "$status" = 207 ]; then
+    echo "The test calendars exist already"
+    exit 0
+fi
+
 mkcalendar() { # user name color
     curl -sf -u "$1:$1" -X MKCALENDAR "$base/$1/$2/" \
         -H "Content-Type: application/xml; charset=utf-8" --data-binary @- >/dev/null <<XML

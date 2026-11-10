@@ -4,7 +4,39 @@ The Grit calendar tab syncs with any CalDAV server. This folder holds a Radicale
 
 ## Local development server
 
-The development server runs on `127.0.0.1:5232` and stores its data in a temporary folder. It needs Python 3 and `curl`.
+The development server runs on `127.0.0.1:5232`. You can run it in Docker or in a Python virtual environment. Both use the configuration files in this folder, and both need `curl` for the test data.
+
+### Run in Docker
+
+This setup uses the official Radicale image `ghcr.io/kozea/radicale:3.9.0`. It needs Docker with the Compose plugin.
+
+1. Start the server:
+
+   ```sh
+   docker compose -f server/radicale/compose.yaml up -d
+   ```
+
+2. Create the test calendars:
+
+   ```sh
+   server/radicale/seed-dev.sh
+   ```
+
+The data stays in the Docker volume `grit-radicale_radicale-data` after the container stops. If the test calendars exist already, `seed-dev.sh` changes nothing.
+
+- Read the server log: `docker compose -f server/radicale/compose.yaml logs -f`.
+- Stop the server: `docker compose -f server/radicale/compose.yaml down`.
+- Stop the server and delete its data: add `-v` to the `down` command.
+
+The container can use 128 MiB of memory at most. Radicale uses about 30 MiB. The container runs as user ID 1000 and reads `config`, `users` and `rights` from this folder. If your user ID is not 1000, make these files readable for all users:
+
+```sh
+chmod 644 server/radicale/config server/radicale/users server/radicale/rights
+```
+
+### Run in a Python virtual environment
+
+This setup stores the data in a temporary folder. It needs Python 3.
 
 1. Start the server:
 
@@ -12,18 +44,20 @@ The development server runs on `127.0.0.1:5232` and stores its data in a tempora
    server/radicale/run-dev.sh
    ```
 
-   The first start creates a Python virtual environment in `server/radicale/.venv` and installs Radicale 3.9.0.
+   The first start creates a Python virtual environment in `server/radicale/.venv` and installs Radicale 3.9.0. The script also creates the test calendars.
 
 2. Wait for the line `Radicale is ready`.
 
-The script creates two users and three calendars:
+Stop the server with Ctrl+C. To keep the data after the server stops, set `RADICALE_DATA` to a folder.
+
+### Test users and calendars
+
+The test data has two users and three calendars:
 
 | User | Password | Calendars that the user sees |
 |---|---|---|
 | alice | alice | `alice/personal`, `alice/family` |
 | bob | bob | `bob/work`, `bob/family` (shared from alice, writable), `bob/alice-personal` (shared from alice, read-only) |
-
-Stop the server with Ctrl+C. To keep the data after the server stops, set `RADICALE_DATA` to a folder.
 
 ### Connect the desktop app
 
@@ -56,7 +90,7 @@ Use Radicale 3.7 or later. Version 3.7 added map shares, which let one user see 
 
 ### Server configuration
 
-Use the Radicale documentation for the installation. These settings matter for Grit:
+Use the Radicale documentation for the installation. This part of the configuration matters for Grit:
 
 ```ini
 [auth]
