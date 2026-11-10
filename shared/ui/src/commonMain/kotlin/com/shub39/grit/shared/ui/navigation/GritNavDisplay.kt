@@ -72,7 +72,8 @@ fun GritNavDisplay(
                     when (globalState.startingSection) {
                         Sections.Tasks -> TaskList
                         Sections.Habits -> HabitsList
-                        Sections.Calendar -> CalendarTab
+                        // The screen of the tab, not the tab marker, like TaskList and HabitsList
+                        Sections.Calendar -> CalendarHome
                     }
             )
         }
