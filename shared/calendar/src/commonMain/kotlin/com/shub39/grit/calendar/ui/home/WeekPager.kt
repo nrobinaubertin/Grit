@@ -16,7 +16,6 @@
  */
 package com.shub39.grit.calendar.ui.home
 
-import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,8 +25,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -48,7 +45,6 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.shub39.grit.calendar.ui.Formatting
@@ -64,13 +60,13 @@ import kotlinx.datetime.plus
 /** Weeks on each side of the current week that the pager can reach. */
 private const val PAGE_RANGE = 52 * 10
 
-private val HOUR_HEIGHT = 48.dp
 private val GUTTER = 44.dp
 private val HEADER_HEIGHT = 48.dp
 
 /**
  * Swipeable week view: a header with the days, a band with all-day and multi-day events, and an
- * hour grid. Every part is one drawing, like the month grid, so that slow phones keep up.
+ * hour grid. The 24 hours fit the screen height, so the whole week shows without scrolling. Every
+ * part is one drawing, like the month grid, so that slow phones keep up.
  */
 @Composable
 internal fun WeekPager(
@@ -109,13 +105,6 @@ internal fun WeekPager(
         }
     }
 
-    // All pages share one vertical position, so that a swipe keeps the hours in place
-    val scroll = rememberScrollState()
-    val density = LocalDensity.current
-    LaunchedEffect(Unit) {
-        val hour = (java.time.LocalTime.now().hour - 1).coerceIn(0, 16)
-        scroll.scrollTo(with(density) { (HOUR_HEIGHT * hour).roundToPx() })
-    }
     // The current time line moves once a minute
     val nowMinute by
         produceState(currentMinute()) {
@@ -147,7 +136,6 @@ internal fun WeekPager(
             is24Hr = is24Hr,
             canCreate = canCreate,
             nowMinute = nowMinute,
-            scroll = scroll,
             onSelect = onSelect,
             onOpenEvent = onOpenEvent,
             onCreateAt = onCreateAt,
@@ -166,7 +154,6 @@ private fun WeekPage(
     is24Hr: Boolean,
     canCreate: Boolean,
     nowMinute: Int,
-    scroll: ScrollState,
     onSelect: (LocalDate) -> Unit,
     onOpenEvent: (DayEvent) -> Unit,
     onCreateAt: (LocalDate, Int) -> Unit,
@@ -176,7 +163,7 @@ private fun WeekPage(
         WeekHeader(days, selectedDate, today, onSelect)
         WeekBand(days, data.band, onSelect, onOpenEvent)
         HorizontalDivider()
-        Box(modifier = Modifier.fillMaxWidth().weight(1f).verticalScroll(scroll)) {
+        Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
             HourGrid(
                 days = days,
                 boxes = data.boxes,
@@ -373,12 +360,12 @@ private fun HourGrid(
     val currentCanCreate by rememberUpdatedState(canCreate)
     Box(
         modifier =
-            Modifier.fillMaxWidth().height(HOUR_HEIGHT * 24).pointerInput(days, boxes) {
+            Modifier.fillMaxSize().pointerInput(days, boxes) {
                 detectTapGestures { offset ->
                     val gutter = GUTTER.toPx()
                     if (offset.x < gutter) return@detectTapGestures
                     val columnWidth = (size.width - gutter) / 7f
-                    val hourHeight = HOUR_HEIGHT.toPx()
+                    val hourHeight = size.height / 24f
                     val hit =
                         boxes.lastOrNull { box ->
                             val left =
@@ -411,8 +398,15 @@ private fun HourGrid(
                 Modifier.fillMaxSize().graphicsLayer().drawWithCache {
                     val gutter = GUTTER.toPx()
                     val columnWidth = (size.width - gutter) / 7
-                    val hourHeight = HOUR_HEIGHT.toPx()
+                    val hourHeight = size.height / 24f
                     val labelSize = 10.sp.toPx()
+                    // On a short screen, label every second or third hour so that labels never
+                    // touch
+                    val labelStep =
+                        listOf(1, 2, 3, 4, 6).first {
+                            it * hourHeight >= labelSize * 1.5f || it == 6
+                        }
+                    val minTitleSize = 7.sp.toPx()
                     val titleSize = 11.sp.toPx()
                     val timeSize = 10.sp.toPx()
                     val inset = 1.dp.toPx()
@@ -423,7 +417,7 @@ private fun HourGrid(
                         for (hour in 0 until 24) {
                             val y = hour * hourHeight
                             drawLine(line, Offset(gutter, y), Offset(size.width, y), 1f)
-                            if (hour > 0) {
+                            if (hour > 0 && hour % labelStep == 0) {
                                 painter.draw(
                                     scope = this,
                                     text = hourLabels[hour],
@@ -456,16 +450,20 @@ private fun HourGrid(
                             )
                             drawRect(color, Offset(left, top), Size(bar, height))
                             val right = left + width - 2 * inset
-                            painter.draw(
-                                scope = this,
-                                text = event.title,
-                                x = left + bar + 2 * inset,
-                                baseline = top + titleSize * 1.1f,
-                                clipRight = right,
-                                color = colors.onSurface,
-                                sizePx = titleSize,
-                                bold = true,
-                            )
+                            // Short events get a smaller title, the shortest only their color
+                            val eventTitleSize = minOf(titleSize, height / 1.25f)
+                            if (eventTitleSize >= minTitleSize) {
+                                painter.draw(
+                                    scope = this,
+                                    text = event.title,
+                                    x = left + bar + 2 * inset,
+                                    baseline = top + eventTitleSize * 1.05f,
+                                    clipRight = right,
+                                    color = colors.onSurface,
+                                    sizePx = eventTitleSize,
+                                    bold = true,
+                                )
+                            }
                             if (height > titleSize * 2.6f) {
                                 painter.draw(
                                     scope = this,
@@ -494,7 +492,7 @@ private fun HourGrid(
                     Modifier.fillMaxSize().drawWithCache {
                         val gutter = GUTTER.toPx()
                         val columnWidth = (size.width - gutter) / 7
-                        val y = nowMinute / 60f * HOUR_HEIGHT.toPx()
+                        val y = nowMinute / 60f * (size.height / 24f)
                         val left = gutter + todayColumn * columnWidth
                         onDrawBehind {
                             drawLine(
