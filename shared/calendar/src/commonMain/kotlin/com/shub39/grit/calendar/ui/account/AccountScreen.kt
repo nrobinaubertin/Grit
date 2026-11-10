@@ -46,11 +46,13 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -84,6 +86,7 @@ fun AccountScreen(state: AccountState, viewModel: AccountViewModel, onBack: () -
     var confirmRemove by remember { mutableStateOf(false) }
     var changePassword by remember { mutableStateOf(false) }
     var phoneDenied by remember { mutableStateOf(false) }
+    val importUi by viewModel.import.collectAsState()
     val askCalendarPermission = rememberCalendarReadPermission { granted ->
         phoneDenied = !granted
         if (granted) viewModel.setPhoneEnabled(true)
@@ -135,6 +138,7 @@ fun AccountScreen(state: AccountState, viewModel: AccountViewModel, onBack: () -
                         onRemove = { confirmRemove = true },
                     )
                 }
+                importSection(onChoose = viewModel::pickIcsFile)
             }
         }
     }
@@ -215,6 +219,7 @@ fun AccountScreen(state: AccountState, viewModel: AccountViewModel, onBack: () -
             },
         )
     }
+    importUi?.let { ImportDialog(it, state, viewModel) }
     if (addByUrl) AddByUrlDialog(viewModel, onDismiss = { addByUrl = false })
     if (changePassword) ChangePasswordDialog(viewModel, onDismiss = { changePassword = false })
     if (confirmRemove) {
@@ -282,6 +287,102 @@ private fun LazyListScope.localSection(
         )
     }
     item { TextButton(onClick = onNew) { Text(stringResource(Res.string.new_local_calendar)) } }
+}
+
+private fun LazyListScope.importSection(onChoose: () -> Unit) {
+    item {
+        Column {
+            SectionTitle(stringResource(Res.string.import_title))
+            Text(
+                stringResource(Res.string.import_body),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+    item { TextButton(onClick = onChoose) { Text(stringResource(Res.string.import_choose_file)) } }
+}
+
+/** One dialog for every step of an import: choose the calendar, wait, see the result. */
+@Composable
+private fun ImportDialog(step: ImportUi, state: AccountState, viewModel: AccountViewModel) {
+    val onThisDevice = stringResource(Res.string.on_this_device)
+    val targets =
+        state.localCalendars.map { it to "${it.displayName.orEmpty()} · $onThisDevice" } +
+            state.collections
+                .filter { it.canWrite && it.supportsEvents }
+                .map { it to (it.displayName ?: it.url) }
+    var chosen by remember(step) { mutableStateOf(targets.firstOrNull()?.first?.id) }
+    AlertDialog(
+        onDismissRequest = { if (step !is ImportUi.Importing) viewModel.closeImport() },
+        title = { Text(stringResource(Res.string.import_title)) },
+        text = {
+            when (step) {
+                is ImportUi.Choose ->
+                    if (targets.isEmpty()) {
+                        Text(stringResource(Res.string.import_no_target))
+                    } else {
+                        Column {
+                            Text(stringResource(Res.string.import_into, step.fileName, step.events))
+                            for ((calendar, label) in targets) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier =
+                                        Modifier.fillMaxWidth().clickable { chosen = calendar.id },
+                                ) {
+                                    RadioButton(
+                                        selected = chosen == calendar.id,
+                                        onClick = { chosen = calendar.id },
+                                    )
+                                    Text(label, style = MaterialTheme.typography.bodyLarge)
+                                }
+                            }
+                        }
+                    }
+                ImportUi.Importing ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                        Text(
+                            stringResource(Res.string.import_running),
+                            modifier = Modifier.padding(start = 16.dp),
+                        )
+                    }
+                is ImportUi.Done ->
+                    Column {
+                        Text(stringResource(Res.string.import_done, step.added, step.updated))
+                        if (step.skipped > 0) {
+                            Text(stringResource(Res.string.import_skipped, step.skipped))
+                        }
+                    }
+                is ImportUi.Failed -> Text(step.message)
+            }
+        },
+        confirmButton = {
+            when (step) {
+                is ImportUi.Choose ->
+                    if (targets.isNotEmpty()) {
+                        TextButton(
+                            onClick = { chosen?.let(viewModel::importInto) },
+                            enabled = chosen != null,
+                        ) {
+                            Text(stringResource(Res.string.import_action))
+                        }
+                    }
+                ImportUi.Importing -> Unit
+                else ->
+                    TextButton(onClick = viewModel::closeImport) {
+                        Text(stringResource(Res.string.ok))
+                    }
+            }
+        },
+        dismissButton = {
+            if (step is ImportUi.Choose) {
+                TextButton(onClick = viewModel::closeImport) {
+                    Text(stringResource(Res.string.cancel))
+                }
+            }
+        },
+    )
 }
 
 /** The calendars that other apps keep on the phone. Grit only reads them. */

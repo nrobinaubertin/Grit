@@ -74,6 +74,9 @@ kotlin {
 
             implementation(libs.kotlinx.datetime)
             implementation(libs.kotlinx.serialization.json)
+            // File picker for .ics imports, the same library as the upstream backup
+            implementation(libs.filekit.core)
+            implementation(libs.filekit.dialogs)
             implementation(libs.kotlinx.coroutines)
 
             implementation(libs.androidx.room.runtime)

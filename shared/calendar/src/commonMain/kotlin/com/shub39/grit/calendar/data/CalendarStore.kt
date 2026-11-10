@@ -338,6 +338,58 @@ class CalendarStore(private val db: CalendarDatabase) {
 
     // --- local edits ---
 
+    /** What an import of an .ics file did. */
+    data class ImportResult(val added: Int, val updated: Int, val skipped: Int)
+
+    /**
+     * Imports events, for example from [EventResource.splitFile], into a calendar that the user can
+     * write to. An event whose UID is already in the calendar is replaced, so that importing the
+     * same file twice adds nothing. In a server calendar, the events upload at the next sync.
+     */
+    suspend fun importEvents(collectionId: Long, resources: List<EventResource>): ImportResult {
+        val collection = dao.collection(collectionId) ?: error("Unknown calendar $collectionId")
+        val local = dao.isLocalCollection(collectionId) == true
+        var added = 0
+        var updated = 0
+        var skipped = 0
+        for (resource in resources) {
+            val info = resource.info()
+            if (info == null || info.cancelled) {
+                skipped++
+                continue
+            }
+            registerCategory(info)
+            val existing = dao.eventByUid(collectionId, info.uid)
+            if (existing != null) {
+                // The file wins, and the change uploads like an edit
+                saveLocal(existing.copy(deleted = false), resource, notify = false)
+                updated++
+                continue
+            }
+            val event =
+                EventEntity(
+                    collectionId = collectionId,
+                    // The UID can hold characters that do not belong in a URL
+                    href = collection.url.trimEnd('/') + "/" + UUID.randomUUID() + ".ics",
+                    uid = info.uid,
+                    ics = resource.toIcs(),
+                    dirty = !local,
+                    version = 1,
+                    existsOnServer = false,
+                    summary = info.summary,
+                    location = info.location,
+                    description = info.description,
+                    recurring = info.isRecurring(),
+                    category = info.category,
+                )
+            val id = dao.insertEvent(event)
+            expand(event.copy(id = id))
+            added++
+        }
+        if (added + updated > 0) _localChanges.tryEmit(Unit)
+        return ImportResult(added, updated, skipped)
+    }
+
     suspend fun createEvent(collectionId: Long, draft: EventDraft): Long {
         val collection = dao.collection(collectionId) ?: error("Unknown calendar $collectionId")
         val local = dao.isLocalCollection(collectionId) == true

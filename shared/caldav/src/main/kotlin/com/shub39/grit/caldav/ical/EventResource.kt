@@ -29,6 +29,7 @@ import java.time.ZonedDateTime
 import java.time.temporal.Temporal
 import java.time.temporal.TemporalAmount
 import java.util.TreeMap
+import java.util.UUID
 import kotlin.time.Instant
 import kotlin.time.toJavaInstant
 import kotlin.time.toKotlinInstant
@@ -270,6 +271,56 @@ class EventResource private constructor(private val calendar: Calendar) {
         /** Parses one CalDAV resource. Throws if the text is not iCalendar. */
         fun parse(ics: String): EventResource =
             EventResource(CalendarBuilder().build(StringReader(ics)))
+
+        /**
+         * Splits an iCalendar file, for example the export of another calendar app, into one
+         * resource per UID: a series stays together with its changed occurrences. An event without
+         * UID gets a new one. To-dos and other components are left out, and so are calendar
+         * properties such as METHOD. Each resource keeps the time zones that its events use.
+         */
+        fun splitFile(ics: String): List<EventResource> {
+            val source = CalendarBuilder().build(StringReader(ics))
+            val zones =
+                source.getComponents<VTimeZone>(Component.VTIMEZONE).associateBy {
+                    it.getProperty<Property>(Property.TZID).orElse(null)?.value
+                }
+            val groups = LinkedHashMap<String, MutableList<VEvent>>()
+            for (event in source.getComponents<VEvent>(Component.VEVENT)) {
+                val uid = event.text(Property.UID)?.takeIf { it.isNotBlank() }
+                if (uid == null) {
+                    groups[UUID.randomUUID().toString()] = mutableListOf(event)
+                } else {
+                    groups.getOrPut(uid) { mutableListOf() } += event
+                }
+            }
+            return groups.map { (uid, events) ->
+                val used =
+                    events
+                        .flatMap { it.getProperties<Property>() }
+                        .mapNotNull { it.getParameter<TzId>(Parameter.TZID).orElse(null)?.value }
+                        .toSet()
+                val text = buildString {
+                    append("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:$PRODUCT_ID\r\n")
+                    for (tzId in used) zones[tzId]?.let { append(it.toString()) }
+                    for (event in events) {
+                        val eventText = event.toString()
+                        // The generated UID goes right after BEGIN:VEVENT
+                        if (event.text(Property.UID).isNullOrBlank()) {
+                            append(
+                                eventText.replaceFirst(
+                                    "BEGIN:VEVENT\r\n",
+                                    "BEGIN:VEVENT\r\nUID:$uid\r\n",
+                                )
+                            )
+                        } else {
+                            append(eventText)
+                        }
+                    }
+                    append("END:VCALENDAR\r\n")
+                }
+                parse(text).also { it.addMissingTimeZones() }
+            }
+        }
 
         /** Creates a new event resource. [uid] must not contain line breaks. */
         fun create(uid: String, draft: EventDraft, now: Instant): EventResource {

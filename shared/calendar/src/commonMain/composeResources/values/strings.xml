@@ -96,4 +96,15 @@
     <string name="error_password_missing">Password missing. Enter it again.</string>
     <string name="notification_channel">Calendar events</string>
     <string name="untitled_event">Event</string>
+    <string name="import_title">Import events</string>
+    <string name="import_body">Add the events of an .ics file, for example the export of another calendar app, to one of your calendars. Events that are already in the calendar are updated.</string>
+    <string name="import_choose_file">Choose an .ics file</string>
+    <string name="import_into">Events in %1$s: %2$d. Import them into:</string>
+    <string name="import_action">Import</string>
+    <string name="import_running">Importing…</string>
+    <string name="import_done">Added: %1$d. Updated: %2$d.</string>
+    <string name="import_skipped">Left out: %1$d (unreadable or cancelled).</string>
+    <string name="import_unreadable">This file is not an iCalendar file.</string>
+    <string name="import_no_events">This file has no events.</string>
+    <string name="import_no_target">No calendar accepts new events. Create a calendar on this device first.</string>
 </resources>

@@ -96,4 +96,15 @@
     <string name="error_password_missing">Mot de passe manquant. Saisissez-le à nouveau.</string>
     <string name="notification_channel">Événements du calendrier</string>
     <string name="untitled_event">Événement</string>
+    <string name="import_title">Importer des événements</string>
+    <string name="import_body">Ajoutez les événements d’un fichier .ics, par exemple l’export d’une autre application d’agenda, à l’un de vos calendriers. Les événements déjà présents dans le calendrier sont mis à jour.</string>
+    <string name="import_choose_file">Choisir un fichier .ics</string>
+    <string name="import_into">Événements dans %1$s : %2$d. Les importer dans :</string>
+    <string name="import_action">Importer</string>
+    <string name="import_running">Importation…</string>
+    <string name="import_done">Ajoutés : %1$d. Mis à jour : %2$d.</string>
+    <string name="import_skipped">Laissés de côté : %1$d (illisibles ou annulés).</string>
+    <string name="import_unreadable">Ce fichier n’est pas un fichier iCalendar.</string>
+    <string name="import_no_events">Ce fichier ne contient aucun événement.</string>
+    <string name="import_no_target">Aucun calendrier n’accepte de nouveaux événements. Créez d’abord un calendrier sur cet appareil.</string>
 </resources>
