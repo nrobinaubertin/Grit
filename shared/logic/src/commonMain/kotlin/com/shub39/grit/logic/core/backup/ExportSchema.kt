@@ -19,6 +19,7 @@ package com.shub39.grit.logic.core.backup
 import com.shub39.grit.logic.habits.database.HabitDatabase
 import com.shub39.grit.logic.tasks.database.TaskDatabase
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 
 @Serializable
 data class ExportSchema(
@@ -30,6 +31,8 @@ data class ExportSchema(
     val tasks: List<TaskSchema>,
     val categories: List<CategorySchema>,
     val subTasks: List<SubTaskSchema>,
+    /** Data of other features, by BackupContributor key. */
+    val extensions: Map<String, JsonElement> = emptyMap(),
 )
 
 @Serializable

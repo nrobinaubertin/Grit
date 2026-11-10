@@ -19,6 +19,7 @@ package com.shub39.grit.logic.core.backup
 import com.shub39.grit.core.GritLogger
 import com.shub39.grit.core.habits.HabitRepo
 import com.shub39.grit.core.interfaces.AlarmScheduler
+import com.shub39.grit.core.settings.backup.BackupContributor
 import com.shub39.grit.core.settings.backup.RestoreRepo
 import com.shub39.grit.core.settings.backup.RestoreResult
 import com.shub39.grit.core.settings.backup.SchemaMismatchException
@@ -37,6 +38,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import org.koin.core.annotation.Single
+import org.koin.mp.KoinPlatform
 
 @Single(binds = [RestoreRepo::class])
 class RestoreImpl(
@@ -107,6 +109,16 @@ class RestoreImpl(
                             }
                     },
                 )
+            }
+
+            for (contributor in KoinPlatform.getKoin().getAll<BackupContributor>()) {
+                val data = jsonDeserialized.extensions[contributor.key] ?: continue
+                try {
+                    contributor.restore(data)
+                } catch (e: Exception) {
+                    if (e is kotlin.coroutines.cancellation.CancellationException) throw e
+                    GritLogger.e("RestoreRepo", "Failed to restore ${contributor.key}: ", e)
+                }
             }
 
             RestoreResult.Success

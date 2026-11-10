@@ -108,6 +108,9 @@ interface CalendarDao {
     @Query("SELECT * FROM event WHERE collectionId = :collectionId AND href = :href")
     suspend fun eventByHref(collectionId: Long, href: String): EventEntity?
 
+    @Query("SELECT * FROM event WHERE collectionId = :collectionId AND deleted = 0 ORDER BY id")
+    suspend fun eventsOf(collectionId: Long): List<EventEntity>
+
     @Query("SELECT * FROM event WHERE collectionId = :collectionId AND dirty = 1")
     suspend fun pendingEvents(collectionId: Long): List<EventEntity>
 

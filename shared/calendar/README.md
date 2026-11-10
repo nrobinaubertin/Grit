@@ -33,14 +33,22 @@ The fork keeps edits to upstream files small, so that upstream changes merge eas
 - `androidApp/build.gradle.kts` and `desktopApp/build.gradle.kts`: one dependency line each.
 - Both `GritModules.kt` files: `CalendarModules` in the Koin `includes`.
 - `shared/ui/.../navigation/`: the new file `ExtensionRoutes.kt`, plus a few lines in `NavigationConfig.kt`, `NavBarAndRail.kt` and `GritNavDisplay.kt`.
+- `shared/core/.../settings/backup/`: the new file `BackupContributor.kt`.
+- `shared/logic/.../core/backup/`: the `extensions` field in `ExportSchema.kt`, and a few lines in `ExportImpl.kt` and `RestoreImpl.kt`.
 
-The calendar module adds its screens through `NavEntryContributor`, which Koin provides to `GritNavDisplay`. Its Android manifest adds the INTERNET permission, the receivers and a network security configuration. The manifest merger adds these to both app flavors.
+The calendar module adds its screens through `NavEntryContributor`, which Koin provides to `GritNavDisplay`. It adds its part of the backup file through `BackupContributor`. Its Android manifest adds the INTERNET permission, the receivers and a network security configuration. The manifest merger adds these to both app flavors.
 
 ## Data and privacy
 
 - On Android, the calendar database is in `noBackupFilesDir`. Calendars are downloaded again after a restore.
 - The account password is encrypted with an Android Keystore key. On desktop, it is in a file that only the user can read.
 - Every event keeps its full iCalendar text. Edits change only the fields that Grit shows, so other clients lose no data.
+- The Grit backup file also contains the calendars:
+  - the categories with their colors
+  - the calendars on this device, with the full iCalendar text of every event
+  - the CalDAV account, and the switches of its calendars
+
+  The password is not in the file. After a restore, enter it again on the "Calendars and accounts" screen, and the server calendars download again. A restore adds and replaces events, but it never deletes them. Changes that are not uploaded yet are not in the file, so sync before you make a backup.
 - If you turn on the calendars of other apps, Grit asks for the calendar read permission. It does not ask before. It does not copy their events into its database, and it never writes to the calendar provider.
 
 ## Tests

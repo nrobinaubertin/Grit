@@ -18,6 +18,7 @@ package com.shub39.grit.logic.core.backup
 
 import com.shub39.grit.core.habits.HabitRepo
 import com.shub39.grit.core.now
+import com.shub39.grit.core.settings.backup.BackupContributor
 import com.shub39.grit.core.settings.backup.ExportRepo
 import com.shub39.grit.core.tasks.TaskRepo
 import io.github.vinceglb.filekit.FileKit
@@ -30,6 +31,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.datetime.LocalDateTime
 import kotlinx.serialization.json.Json
 import org.koin.core.annotation.Single
+import org.koin.mp.KoinPlatform
 
 @Single(binds = [ExportRepo::class])
 class ExportImpl(private val taskRepo: TaskRepo, private val habitsRepo: HabitRepo) : ExportRepo {
@@ -83,6 +85,11 @@ class ExportImpl(private val taskRepo: TaskRepo, private val habitsRepo: HabitRe
                     }
                     .await()
 
+            val extensions =
+                KoinPlatform.getKoin().getAll<BackupContributor>().associate {
+                    it.key to it.export()
+                }
+
             val time = LocalDateTime.now().toString().replace(":", "").replace(" ", "")
             val file =
                 FileKit.openFileSaver(
@@ -99,6 +106,7 @@ class ExportImpl(private val taskRepo: TaskRepo, private val habitsRepo: HabitRe
                         tasks = tasksDef,
                         categories = categoriesDef,
                         subTasks = subTasksDef,
+                        extensions = extensions,
                     )
                 )
             )
