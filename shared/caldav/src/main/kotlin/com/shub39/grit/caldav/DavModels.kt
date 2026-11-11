@@ -87,6 +87,18 @@ sealed interface WriteResult {
     data class Failed(val code: Int?, val message: String?) : WriteResult
 }
 
+/** Who else uses a calendar, as far as the server tells. */
+enum class Sharing {
+    /** The calendar appears in no share: nobody else uses it. */
+    None,
+
+    /** Someone shared it with the user, or the user shared it with someone or by link. */
+    Shared,
+
+    /** The server has no sharing API that Grit knows, or it did not answer. */
+    Unknown,
+}
+
 /** The server rejected the login (HTTP 401). */
 class AuthenticationException(message: String) : Exception(message)
 
@@ -119,4 +131,7 @@ interface DavClient {
      * [color] is ARGB, or null for the server's default.
      */
     suspend fun createCalendar(url: String, displayName: String, color: Int?): WriteResult
+
+    /** Whether [username] shares the calendar at [url] with anybody, in either direction. */
+    suspend fun sharing(url: String, username: String): Sharing
 }

@@ -49,6 +49,8 @@ dependencies {
     implementation(calendarLibs.commons.lang3)
     implementation(calendarLibs.commons.codec)
     implementation(libs.kotlinx.coroutines)
+    // Reads the JSON answers of the Radicale sharing API (no compiler plugin needed)
+    implementation(libs.kotlinx.serialization.json)
     // Public API types (dates and times) are kotlinx-datetime, so that common code can use them
     api(libs.kotlinx.datetime)
 

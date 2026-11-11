@@ -22,6 +22,7 @@ import com.shub39.grit.caldav.DavClient
 import com.shub39.grit.caldav.Discovery
 import com.shub39.grit.caldav.InvalidSyncTokenException
 import com.shub39.grit.caldav.RemoteItem
+import com.shub39.grit.caldav.Sharing
 import com.shub39.grit.caldav.SyncDelta
 import com.shub39.grit.caldav.WriteCondition
 import com.shub39.grit.caldav.WriteResult
@@ -116,6 +117,8 @@ class FakeServer : DavClient {
         requests += "MKCALENDAR $url $displayName"
         return if (canWrite) WriteResult.Ok(null) else WriteResult.Forbidden
     }
+
+    override suspend fun sharing(url: String, username: String): Sharing = Sharing.Unknown
 }
 
 /** An in-memory local collection. */

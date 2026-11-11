@@ -49,18 +49,29 @@ import io.ktor.client.plugins.UserAgent
 import io.ktor.client.plugins.auth.Auth
 import io.ktor.client.plugins.auth.providers.BasicAuthCredentials
 import io.ktor.client.plugins.auth.providers.basic
+import io.ktor.client.request.accept
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.Url
 import io.ktor.http.content.TextContent
+import io.ktor.http.contentType
 import io.ktor.http.headersOf
+import io.ktor.http.isSuccess
 import io.ktor.http.withCharset
 import java.io.Closeable
 import java.io.IOException
 import java.net.URI
 import kotlinx.coroutines.flow.toList
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 /** [DavClient] on top of dav4jvm and Ktor (OkHttp engine). Close it when done. */
 class KtorDavClient(private val client: HttpClient) : DavClient, Closeable {
@@ -124,9 +135,16 @@ class KtorDavClient(private val client: HttpClient) : DavClient, Closeable {
     }
 
     override suspend fun collection(url: String): CollectionInfo? = translate {
-        propfindSelf(Url(normalizeUrl(url)), *COLLECTION_PROPERTIES)
-            ?.takeIf { it.isCalendar() }
-            ?.toCollectionInfo()
+        try {
+            propfindSelf(Url(normalizeUrl(url)), *COLLECTION_PROPERTIES)
+                ?.takeIf { it.isCalendar() }
+                ?.toCollectionInfo()
+        } catch (_: NotFoundException) {
+            // Someone deleted the calendar: not an error for the callers
+            null
+        } catch (_: GoneException) {
+            null
+        }
     }
 
     override suspend fun syncCollection(url: String, token: String?): SyncDelta = translate {
@@ -221,6 +239,50 @@ class KtorDavClient(private val client: HttpClient) : DavClient, Closeable {
                 "</C:supported-calendar-component-set></D:prop></D:set></C:mkcalendar>"
         DavResource(client, Url(url)).mkCol(body, "MKCALENDAR") { WriteResult.Ok(null) }
     }
+
+    /**
+     * Asks the Radicale 3.7+ sharing API for every share of the user, by map and by link. An entry
+     * matches when the calendar is the shared one (PathMapped, the user shared it) or where a share
+     * shows up (PathOrToken, someone shared it with the user). Other servers answer with an error,
+     * which gives [Sharing.Unknown].
+     */
+    override suspend fun sharing(url: String, username: String): Sharing =
+        try {
+            val target = URI(url)
+            // Same scheme, host and port as the calendar
+            val api = target.resolve("/.sharing/v1/all/list").toString()
+            val response =
+                client.post(api) {
+                    contentType(ContentType.Application.Json)
+                    accept(ContentType.Application.Json)
+                    setBody("{}")
+                }
+            if (response.status == HttpStatusCode.Unauthorized) {
+                throw AuthenticationException("Unauthorized")
+            }
+            if (!response.status.isSuccess()) return Sharing.Unknown
+            val answer = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+            val status = answer["Status"]?.jsonPrimitive?.contentOrNull
+            if (status == "not-found") return Sharing.None
+            if (status != "success") return Sharing.Unknown
+            val path = target.rawPath.trimEnd('/') + "/"
+            val shares = answer["Content"]?.jsonArray.orEmpty().map { it.jsonObject }
+            val shared =
+                shares.any { share ->
+                    fun field(name: String) = share[name]?.jsonPrimitive?.contentOrNull.orEmpty()
+                    val mapped = field("PathMapped").trimEnd('/') + "/"
+                    val shownAt = field("PathOrToken").trimEnd('/') + "/"
+                    (field("Owner") == username && path.endsWith(mapped)) ||
+                        (field("User") == username && path.endsWith(shownAt))
+                }
+            if (shared) Sharing.Shared else Sharing.None
+        } catch (e: AuthenticationException) {
+            throw e
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            Sharing.Unknown
+        }
 
     private fun escapeXml(text: String): String =
         text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")

@@ -8,7 +8,9 @@ This fork of Grit adds a Calendar tab that syncs with a CalDAV server, for examp
 - It keeps calendars on the device only, without a server. These calendars never sync. A hidden local account holds them, so they use the same storage, editor and reminders as synced calendars.
 - It creates, edits and deletes events on calendars that you can write to. A repeating event is edited as a whole series. One occurrence can be deleted on its own.
 - It shows read-only calendars without edit actions. If the server does not give the `DAV:write-content` privilege, the calendar is read-only.
-- It moves a calendar between this device and the server. "Start syncing" on a calendar of the device creates it on the server, with the same name and color, and uploads its events. "Stop syncing" on a server calendar keeps its events on this device only. The server copy stays for the other devices and the people who share it, and Grit leaves it out of later syncs.
+- It moves a calendar between this device and the server:
+  - "Start syncing" on a calendar of the device puts it on the server, with the same name and color, and uploads its events. If the calendar was on the server before and that server calendar still exists, Grit reconnects to it: events changed on the device upload, and the others take the server version.
+  - "Stop syncing" on a server calendar keeps its events on this device only. If the calendar is yours alone, Grit deletes it from the server, and your other devices lose it. Grit asks the Radicale sharing API: a calendar that you shared, or that someone shared with you, stays on the server. If Grit cannot tell, for example with another server or without a connection, the calendar also stays. Grit then leaves the kept calendar out of later syncs.
 - It imports `.ics` files, for example the export of another calendar app, into a calendar that you choose. A series stays together with its changed occurrences. An event that is already in the calendar (same UID) is updated, so a second import of the same file adds nothing.
 - It shows reminders as Android notifications. The Grit setting that pauses notifications also pauses calendar reminders.
 - It syncs at these times: every 30 minutes, 5 seconds after a local change, at the opening of the tab, and on pull-to-refresh.
@@ -83,6 +85,7 @@ GRIT_SCREENSHOTS=/tmp/grit-shots ./gradlew :shared:calendar:jvmTest --tests '*Sc
 ## Known limits
 
 - One account in the user interface. The database supports more.
+- An event that you delete on the device while a kept calendar does not sync comes back when you start syncing it again.
 - Grit creates a server calendar only through "Start syncing". For an empty one, use the web interface of the server.
 - A single occurrence of a repeating event cannot be edited, only deleted.
 - No day view with hours.

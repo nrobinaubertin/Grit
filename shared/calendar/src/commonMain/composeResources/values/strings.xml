@@ -129,8 +129,11 @@
     <string name="auto_backup_now">Back up now</string>
     <string name="start_syncing">Start syncing</string>
     <string name="stop_syncing">Stop syncing</string>
-    <string name="start_syncing_confirm">Start syncing “%1$s”? Grit creates this calendar on your CalDAV server and uploads its events. Your other devices can then show it, and you can share it.</string>
-    <string name="stop_syncing_confirm">Stop syncing “%1$s”? Grit keeps its events on this device only. The calendar stays on the server, for your other devices and the people who share it. If nobody needs it there, delete it in the web interface of the server.</string>
-    <string name="start_syncing_running">Creating the calendar on the server…</string>
+    <string name="start_syncing_confirm">Start syncing “%1$s”? Grit puts this calendar on your CalDAV server and uploads its events. If it was on the server before and its server calendar still exists, Grit uses that calendar again.</string>
+    <string name="stop_syncing_confirm">Stop syncing “%1$s”? Grit keeps its events on this device. If the calendar is yours alone, Grit also deletes it from the server, and your other devices lose it. If someone else shares it, it stays on the server for them.</string>
     <string name="start_syncing_failed">Grit could not start syncing this calendar: %1$s</string>
+    <string name="sync_toggle_running">Updating the server…</string>
+    <string name="stop_syncing_deleted">Grit deleted “%1$s” from the server. Its events stay on this device.</string>
+    <string name="stop_syncing_kept_shared">“%1$s” stays on the server, because someone else shares it. Its events stay on this device, and Grit no longer syncs it.</string>
+    <string name="stop_syncing_kept_unknown">“%1$s” stays on the server, because Grit could not check who else uses it. Its events stay on this device, and Grit no longer syncs it.</string>
 </resources>

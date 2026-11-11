@@ -207,6 +207,10 @@ class CollectionSyncer(
         } catch (_: InvalidSyncTokenException) {
             incremental = false
         }
+        // Without a token the server lists every item: what it does not list is gone
+        if (incremental && state.syncToken == null) {
+            removed += known.keys - changed.map { it.href }.toSet()
+        }
 
         if (!incremental) {
             changed.clear()

@@ -129,8 +129,11 @@
     <string name="auto_backup_now">Sauvegarder maintenant</string>
     <string name="start_syncing">Synchroniser</string>
     <string name="stop_syncing">Ne plus synchroniser</string>
-    <string name="start_syncing_confirm">Synchroniser « %1$s » ? Grit crée ce calendrier sur votre serveur CalDAV et y envoie ses événements. Vos autres appareils peuvent alors l’afficher, et vous pouvez le partager.</string>
-    <string name="stop_syncing_confirm">Ne plus synchroniser « %1$s » ? Grit garde ses événements sur cet appareil seulement. Le calendrier reste sur le serveur, pour vos autres appareils et les personnes qui le partagent. Si personne n’en a besoin, supprimez-le dans l’interface web du serveur.</string>
-    <string name="start_syncing_running">Création du calendrier sur le serveur…</string>
+    <string name="start_syncing_confirm">Synchroniser « %1$s » ? Grit met ce calendrier sur votre serveur CalDAV et y envoie ses événements. S’il était déjà sur le serveur et que son calendrier existe encore, Grit le réutilise.</string>
+    <string name="stop_syncing_confirm">Ne plus synchroniser « %1$s » ? Grit garde ses événements sur cet appareil. Si le calendrier n’est qu’à vous, Grit le supprime aussi du serveur, et vos autres appareils le perdent. Si quelqu’un d’autre le partage, il reste sur le serveur pour cette personne.</string>
     <string name="start_syncing_failed">Grit n’a pas pu synchroniser ce calendrier : %1$s</string>
+    <string name="sync_toggle_running">Mise à jour du serveur…</string>
+    <string name="stop_syncing_deleted">Grit a supprimé « %1$s » du serveur. Ses événements restent sur cet appareil.</string>
+    <string name="stop_syncing_kept_shared">« %1$s » reste sur le serveur, car quelqu’un d’autre le partage. Ses événements restent sur cet appareil, et Grit ne le synchronise plus.</string>
+    <string name="stop_syncing_kept_unknown">« %1$s » reste sur le serveur, car Grit n’a pas pu vérifier qui d’autre l’utilise. Ses événements restent sur cet appareil, et Grit ne le synchronise plus.</string>
 </resources>

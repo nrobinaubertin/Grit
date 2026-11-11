@@ -52,7 +52,8 @@ class RadicaleIntegrationTest {
                     discovery.collections.associateBy {
                         it.url.trimEnd('/').substringAfterLast('/')
                     }
-                assertEquals(setOf("work", "alice-personal", "family"), byName.keys)
+                // Other tests and manual tests can leave more calendars on the server
+                assertTrue(byName.keys.containsAll(setOf("work", "alice-personal", "family")))
                 assertTrue(byName.getValue("work").canWrite)
                 assertFalse(byName.getValue("alice-personal").canWrite)
                 assertTrue(byName.getValue("family").canWrite)
@@ -141,6 +142,27 @@ class RadicaleIntegrationTest {
                     assertFalse(dav.createCalendar(url, "Again", null) is WriteResult.Ok)
                 } finally {
                     dav.delete(url, WriteCondition.None)
+                }
+            }
+        }
+
+    @Test
+    fun `the sharing API tells shared calendars apart`() =
+        runBlocking<Unit> {
+            client("alice").use { alice ->
+                // alice shared her family calendar with bob
+                assertEquals(Sharing.Shared, alice.sharing("$baseUrl/alice/family/", "alice"))
+            }
+            client("bob").use { bob ->
+                // bob sees alice's calendar through a share
+                assertEquals(Sharing.Shared, bob.sharing("$baseUrl/bob/family/", "bob"))
+                assertEquals(Sharing.None, bob.sharing("$baseUrl/bob/work/", "bob"))
+                val url = "$baseUrl/bob/${UUID.randomUUID()}/"
+                try {
+                    bob.createCalendar(url, "Only mine", null)
+                    assertEquals(Sharing.None, bob.sharing(url, "bob"))
+                } finally {
+                    bob.delete(url, WriteCondition.None)
                 }
             }
         }

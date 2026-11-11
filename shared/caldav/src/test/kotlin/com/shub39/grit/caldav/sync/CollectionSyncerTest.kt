@@ -147,6 +147,20 @@ class CollectionSyncerTest {
     }
 
     @Test
+    fun `a sync without token removes what the server no longer lists`() = runTest {
+        server.serverPut(a, ics("a", "A"))
+        server.serverPut(b, ics("b", "B"))
+        syncer.sync(local)
+        // As after "Start syncing" reconnects a calendar: known items, but no token
+        local.state = SyncState(null, null)
+        server.serverDelete(a)
+        val report = syncer.sync(local)
+        assertEquals(1, report.removedLocally)
+        assertNull(local.byHref(a))
+        assertEquals(ics("b", "B"), local.byHref(b)!!.ics)
+    }
+
+    @Test
     fun `losing write access makes the collection read-only`() = runTest {
         server.serverPut(a, ics("a", "A"))
         syncer.sync(local)

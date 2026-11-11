@@ -36,6 +36,9 @@ import grit.shared.calendar.generated.resources.error_wrong_login
 import grit.shared.calendar.generated.resources.import_no_events
 import grit.shared.calendar.generated.resources.import_unreadable
 import grit.shared.calendar.generated.resources.start_syncing_failed
+import grit.shared.calendar.generated.resources.stop_syncing_deleted
+import grit.shared.calendar.generated.resources.stop_syncing_kept_shared
+import grit.shared.calendar.generated.resources.stop_syncing_kept_unknown
 import io.github.vinceglb.filekit.FileKit
 import io.github.vinceglb.filekit.dialogs.FileKitMode
 import io.github.vinceglb.filekit.dialogs.FileKitType
@@ -92,6 +95,9 @@ data class AccountState(
 @Immutable
 sealed interface SyncToggleUi {
     data object Running : SyncToggleUi
+
+    /** What happened to the server copy after "Stop syncing". */
+    data class Done(val message: String) : SyncToggleUi
 
     data class Failed(val message: String) : SyncToggleUi
 }
@@ -238,9 +244,22 @@ class AccountViewModel(
         }
     }
 
-    /** Keeps the calendar on this device only. The server copy stays. */
-    fun stopSyncing(collectionId: Long) {
-        viewModelScope.launch { syncManager.stopSyncing(collectionId) }
+    /** Keeps the calendar on this device only, and says what happened on the server. */
+    fun stopSyncing(calendar: CollectionEntity) {
+        syncToggle.value = SyncToggleUi.Running
+        viewModelScope.launch {
+            val name = calendar.displayName.orEmpty()
+            val message =
+                when (syncManager.stopSyncing(calendar.id)) {
+                    CalendarSyncManager.StopResult.Deleted ->
+                        getString(Res.string.stop_syncing_deleted, name)
+                    CalendarSyncManager.StopResult.KeptShared ->
+                        getString(Res.string.stop_syncing_kept_shared, name)
+                    CalendarSyncManager.StopResult.KeptUnknown ->
+                        getString(Res.string.stop_syncing_kept_unknown, name)
+                }
+            syncToggle.value = SyncToggleUi.Done(message)
+        }
     }
 
     fun closeSyncToggle() {

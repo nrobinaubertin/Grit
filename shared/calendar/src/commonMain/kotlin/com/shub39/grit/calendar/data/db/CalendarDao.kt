@@ -236,6 +236,9 @@ interface CalendarDao {
 
     @Query("DELETE FROM kv WHERE `key` = :key") suspend fun deleteValue(key: String)
 
+    @Query("SELECT `key` FROM kv WHERE `key` LIKE :prefix || '%' AND value = :value")
+    suspend fun keysWithValue(prefix: String, value: Long): List<String>
+
     /** Settings whose key starts with [prefix]. */
     @Query("SELECT * FROM kv WHERE `key` LIKE :prefix || '%'")
     fun valuesFlow(prefix: String): Flow<List<KeyValueEntity>>

@@ -21,7 +21,10 @@ import com.shub39.grit.caldav.CollectionInfo
 import com.shub39.grit.caldav.Credentials
 import com.shub39.grit.caldav.Discovery
 import com.shub39.grit.caldav.KtorDavClient
+import com.shub39.grit.caldav.Sharing
+import com.shub39.grit.caldav.WriteCondition
 import com.shub39.grit.caldav.WriteResult
+import com.shub39.grit.caldav.ical.EventResource
 import com.shub39.grit.caldav.sync.CollectionSyncer
 import com.shub39.grit.calendar.data.db.AccountEntity
 import com.shub39.grit.calendar.data.db.CalendarDatabase
@@ -124,9 +127,11 @@ class CalendarSyncManager(
         dao.setSyncEnabled(collectionId, enabled)
 
     /**
-     * Turns a calendar on this device into a calendar on the CalDAV server. Grit creates it in the
-     * calendar home with the same name and color, then marks every event for upload, and syncs. A
-     * server calendar whose sync was paused simply syncs again.
+     * Turns a calendar on this device into a calendar on the CalDAV server, then syncs. If the
+     * calendar came from a server calendar that "Stop syncing" kept and that still exists, Grit
+     * reconnects to it: events changed on this device since then upload, the others take the server
+     * version. Otherwise Grit creates a new calendar in the calendar home, with the same name and
+     * color, and uploads every event. A server calendar whose sync was paused syncs again.
      */
     suspend fun startSyncing(collectionId: Long) {
         mutex.withLock {
@@ -144,54 +149,162 @@ class CalendarSyncManager(
                 account.homeSetUrl
                     ?: account.principalUrl
                     ?: throw StartSyncingException("The server did not give a calendar home")
-            val url = home.trimEnd('/') + "/" + UUID.randomUUID() + "/"
-            val result =
-                KtorDavClient(account.baseUrl, Credentials(account.username, password)).use {
-                    it.createCalendar(url, calendar.displayName ?: "Calendar", calendar.color)
+            KtorDavClient(account.baseUrl, Credentials(account.username, password)).use { dav ->
+                val former = formerServerCalendar(collectionId)
+                val info = former?.let { dav.collection(it) }?.takeIf { it.supportsEvents }
+                if (info != null) {
+                    reconnect(calendar, account, home, info)
+                } else {
+                    val url = home.trimEnd('/') + "/" + UUID.randomUUID() + "/"
+                    val result =
+                        dav.createCalendar(url, calendar.displayName ?: "Calendar", calendar.color)
+                    if (result !is WriteResult.Ok) throw StartSyncingException(result.describe())
+                    moveToServer(calendar, account, url)
                 }
-            if (result !is WriteResult.Ok) throw StartSyncingException(result.describe())
-            dao.updateCollection(
-                calendar.copy(
-                    accountId = account.id,
-                    url = url,
-                    canWrite = true,
-                    manual = false,
-                    syncEnabled = true,
-                    syncToken = null,
-                    ctag = null,
-                    lastSync = null,
-                    lastError = null,
-                )
-            )
-            for (event in dao.eventsOf(collectionId)) {
-                dao.updateEvent(
-                    event.copy(
-                        href = url + event.href.substringAfterLast('/'),
-                        etag = null,
-                        dirty = true,
-                        existsOnServer = false,
-                        version = event.version + 1,
-                        syncError = null,
-                    )
-                )
             }
         }
         syncAll()
     }
 
+    /** The server calendar that a "Stop syncing" kept for this calendar, if any. */
+    private suspend fun formerServerCalendar(collectionId: Long): String? {
+        val stoppedAt = dao.getValue(STOPPED_AT + collectionId) ?: return null
+        if (stoppedAt <= 0) return null
+        return dao.keysWithValue(IGNORED, collectionId).firstOrNull()?.removePrefix(IGNORED)?.let {
+            "$it/"
+        }
+    }
+
+    private suspend fun moveToServer(
+        calendar: CollectionEntity,
+        account: AccountEntity,
+        url: String,
+    ) {
+        dao.updateCollection(
+            calendar.copy(
+                accountId = account.id,
+                url = url,
+                canWrite = true,
+                manual = false,
+                syncEnabled = true,
+                syncToken = null,
+                ctag = null,
+                lastSync = null,
+                lastError = null,
+            )
+        )
+        for (event in dao.eventsOf(calendar.id)) {
+            dao.updateEvent(
+                event.copy(
+                    href = url + event.href.substringAfterLast('/'),
+                    etag = null,
+                    dirty = true,
+                    existsOnServer = false,
+                    version = event.version + 1,
+                    syncError = null,
+                )
+            )
+        }
+    }
+
     /**
-     * Turns a server calendar into a calendar on this device, with all its events. The server copy
-     * stays as it is, for the other devices and the people who share it, and discovery leaves it
-     * out from now on. Changes that are not uploaded yet stay on this device.
+     * Links the calendar back to its former server calendar. The events kept their server ETags, so
+     * changed ones upload with If-Match (a newer server version is a normal conflict), new ones
+     * upload as new, and unchanged ones take whatever the server has now, deletions included.
      */
-    suspend fun stopSyncing(collectionId: Long) {
+    private suspend fun reconnect(
+        calendar: CollectionEntity,
+        account: AccountEntity,
+        home: String,
+        info: CollectionInfo,
+    ) {
+        val stoppedAt = dao.getValue(STOPPED_AT + calendar.id) ?: 0L
+        val url = info.url.trimEnd('/') + "/"
+        dao.deleteValue(IGNORED + url.trimEnd('/'))
+        dao.deleteValue(STOPPED_AT + calendar.id)
+        dao.updateCollection(
+            calendar.copy(
+                accountId = account.id,
+                url = url,
+                displayName = info.displayName ?: calendar.displayName,
+                color = info.color ?: calendar.color,
+                canWrite = info.canWrite,
+                // Discovery does not find calendars outside the home: keep them anyway
+                manual = !url.startsWith(home.trimEnd('/') + "/"),
+                syncEnabled = true,
+                syncToken = null,
+                ctag = null,
+                lastSync = null,
+                lastError = null,
+            )
+        )
+        for (event in dao.eventsOf(calendar.id)) {
+            val href = url + event.href.substringAfterLast('/')
+            // Every edit in Grit writes LAST-MODIFIED: without it, the event was not edited here
+            val changed =
+                runCatching { EventResource.parse(event.ics).info()?.lastModified }
+                    .getOrNull()
+                    // LAST-MODIFIED has whole seconds: an edit in the second of the stop counts
+                    ?.let { it.toEpochMilliseconds() >= stoppedAt / 1000 * 1000 } ?: false
+            val updated =
+                when {
+                    event.etag == null || !event.existsOnServer ->
+                        event.copy(dirty = true, existsOnServer = false)
+                    changed -> event.copy(dirty = true, existsOnServer = true)
+                    else -> event.copy(dirty = false, existsOnServer = true)
+                }
+            dao.updateEvent(
+                updated.copy(
+                    href = href,
+                    version = if (updated.dirty) event.version + 1 else event.version,
+                    syncError = null,
+                )
+            )
+        }
+    }
+
+    /** What "Stop syncing" did with the server copy. */
+    enum class StopResult {
+        /** The calendar was the user's alone: Grit deleted it on the server. */
+        Deleted,
+
+        /** Someone else shares it: it stays on the server. */
+        KeptShared,
+
+        /** Grit could not tell who shares it, or could not delete it: it stays on the server. */
+        KeptUnknown,
+    }
+
+    /**
+     * Turns a server calendar into a calendar on this device, with all its events. If the calendar
+     * is the user's alone (in their calendar home and in no share), Grit deletes it on the server,
+     * so the user's other devices lose it too. Otherwise the server copy stays for the other
+     * people, discovery leaves it out, and a later "Start syncing" reconnects to it. Changes that
+     * are not uploaded yet stay on this device.
+     */
+    suspend fun stopSyncing(collectionId: Long): StopResult {
+        val result: StopResult
         mutex.withLock {
-            val calendar = dao.collection(collectionId) ?: return
-            if (dao.isLocalCollection(collectionId) == true) return@withLock
+            val calendar = dao.collection(collectionId) ?: return StopResult.KeptUnknown
+            if (dao.isLocalCollection(collectionId) == true) return StopResult.KeptUnknown
+            val sharing = sharingOf(calendar)
+            val deleted = sharing == Sharing.None && deleteOnServer(calendar)
+            result =
+                when {
+                    deleted -> StopResult.Deleted
+                    sharing == Sharing.Shared -> StopResult.KeptShared
+                    else -> StopResult.KeptUnknown
+                }
             val local =
                 dao.localAccount()?.id
                     ?: dao.upsertAccount(AccountEntity(baseUrl = "", username = "", local = true))
-            dao.putValue(KeyValueEntity(IGNORED + calendar.url.trimEnd('/'), 1))
+            if (!deleted) {
+                // Remember the server calendar: discovery skips it, "Start syncing" reuses it
+                dao.putValue(KeyValueEntity(IGNORED + calendar.url.trimEnd('/'), collectionId))
+                dao.putValue(
+                    KeyValueEntity(STOPPED_AT + collectionId, clock.now().toEpochMilliseconds())
+                )
+            }
             val url = CalendarStore.LOCAL_URL_PREFIX + UUID.randomUUID() + "/"
             dao.updateCollection(
                 calendar.copy(
@@ -213,15 +326,53 @@ class CalendarSyncManager(
                 dao.updateEvent(
                     event.copy(
                         href = url + event.href.substringAfterLast('/'),
-                        etag = null,
                         dirty = false,
-                        existsOnServer = false,
+                        // A kept server copy keeps its ETags, for a later reconnection
+                        etag = if (deleted) null else event.etag,
+                        existsOnServer = !deleted && event.existsOnServer,
                         syncError = null,
                     )
                 )
             }
         }
         reminders.reschedule()
+        return result
+    }
+
+    /** [Sharing.None] only for a calendar in the user's home that appears in no share. */
+    private suspend fun sharingOf(calendar: CollectionEntity): Sharing {
+        val account = dao.account(calendar.accountId) ?: return Sharing.Unknown
+        val home = account.homeSetUrl ?: account.principalUrl ?: return Sharing.Unknown
+        // A calendar outside the home belongs to someone else
+        if (!calendar.url.startsWith(home.trimEnd('/') + "/")) return Sharing.Shared
+        val password = credentials.load(account.id) ?: return Sharing.Unknown
+        return try {
+            KtorDavClient(account.baseUrl, Credentials(account.username, password)).use {
+                it.sharing(calendar.url, account.username)
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            Sharing.Unknown
+        }
+    }
+
+    private suspend fun deleteOnServer(calendar: CollectionEntity): Boolean {
+        val account = dao.account(calendar.accountId) ?: return false
+        val password = credentials.load(account.id) ?: return false
+        return try {
+            KtorDavClient(account.baseUrl, Credentials(account.username, password)).use {
+                when (it.delete(calendar.url, WriteCondition.None)) {
+                    is WriteResult.Ok,
+                    WriteResult.NotFound -> true
+                    else -> false
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            false
+        }
     }
 
     /** Syncs every calendar of every account. Errors are stored on the account and calendar. */
@@ -345,6 +496,9 @@ class CalendarSyncManager(
     private companion object {
         /** kv key prefix of the server calendars whose sync the user stopped. */
         const val IGNORED = "ignored:"
+
+        /** kv key prefix: when the user stopped syncing a calendar, by calendar id. */
+        const val STOPPED_AT = "stopped-at:"
     }
 }
 

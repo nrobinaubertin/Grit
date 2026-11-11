@@ -244,7 +244,7 @@ fun AccountScreen(state: AccountState, viewModel: AccountViewModel, onBack: () -
             confirm = stringResource(Res.string.stop_syncing),
             onConfirm = {
                 confirmStop = null
-                viewModel.stopSyncing(calendar.id)
+                viewModel.stopSyncing(calendar)
             },
             onDismiss = { confirmStop = null },
         )
@@ -258,15 +258,16 @@ fun AccountScreen(state: AccountState, viewModel: AccountViewModel, onBack: () -
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             CircularProgressIndicator(modifier = Modifier.size(24.dp))
                             Text(
-                                stringResource(Res.string.start_syncing_running),
+                                stringResource(Res.string.sync_toggle_running),
                                 modifier = Modifier.padding(start = 16.dp),
                             )
                         }
+                    is SyncToggleUi.Done -> Text(toggle.message)
                     is SyncToggleUi.Failed -> Text(toggle.message)
                 }
             },
             confirmButton = {
-                if (toggle is SyncToggleUi.Failed) {
+                if (toggle !is SyncToggleUi.Running) {
                     TextButton(onClick = viewModel::closeSyncToggle) {
                         Text(stringResource(Res.string.ok))
                     }
