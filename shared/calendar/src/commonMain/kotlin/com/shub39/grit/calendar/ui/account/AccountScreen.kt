@@ -402,28 +402,6 @@ private fun LazyListScope.displaySection(state: AccountState, viewModel: Account
             )
         }
     }
-    item {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier =
-                Modifier.fillMaxWidth().clickable {
-                    viewModel.setOpenOnCalendar(!state.openOnCalendar)
-                },
-        ) {
-            Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
-                Text(
-                    stringResource(Res.string.open_on_calendar),
-                    style = MaterialTheme.typography.bodyLarge,
-                )
-                Text(
-                    stringResource(Res.string.open_on_calendar_body),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Switch(checked = state.openOnCalendar, onCheckedChange = viewModel::setOpenOnCalendar)
-        }
-    }
 }
 
 private fun LazyListScope.importSection(onChoose: () -> Unit) {

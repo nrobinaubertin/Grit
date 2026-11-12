@@ -52,6 +52,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.input.pointer.pointerInput
@@ -66,6 +68,7 @@ import com.shub39.grit.core.tasks.TaskWithSubTasks
 import com.shub39.grit.core.toFormattedString
 import com.shub39.grit.shared.ui.components.detachedItemShape
 import com.shub39.grit.shared.ui.components.segmentedListItemShapes
+import com.shub39.grit.shared.ui.navigation.LocalTaskColors
 import com.shub39.grit.shared.ui.task.ui.section.ShowSubTaskUpsertSheet
 import com.shub39.grit.shared.ui.task.ui.section.UpdateStatusTarget
 import grit.shared.ui.generated.resources.*
@@ -114,6 +117,8 @@ fun TaskCard(
         )
     val cardColors =
         CardDefaults.cardColors(containerColor = cardContainer, contentColor = cardContent)
+    // The color of the task (calendar fork), as a stripe on the left edge
+    val accent = LocalTaskColors.current[taskWithSubTasks.task.id]?.let { Color(it) }
 
     Column(modifier = modifier) {
         Box {
@@ -135,7 +140,14 @@ fun TaskCard(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    modifier =
+                        Modifier.fillMaxWidth()
+                            .drawBehind {
+                                if (accent != null) {
+                                    drawRect(accent, size = Size(6.dp.toPx(), size.height))
+                                }
+                            }
+                            .padding(16.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     Column(modifier = Modifier.weight(1f)) {

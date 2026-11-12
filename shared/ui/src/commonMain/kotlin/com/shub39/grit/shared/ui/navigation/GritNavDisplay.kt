@@ -23,6 +23,7 @@ import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.retain.retain
@@ -51,6 +52,7 @@ import com.shub39.grit.shared.ui.viewmodel.HabitViewModel
 import com.shub39.grit.shared.ui.viewmodel.MainViewModel
 import com.shub39.grit.shared.ui.viewmodel.SettingsViewModel
 import com.shub39.grit.shared.ui.viewmodel.TasksViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
 import org.koin.compose.getKoin
 import org.koin.compose.viewmodel.koinViewModel
 
@@ -65,6 +67,10 @@ fun GritNavDisplay(
     val adaptiveInfo = currentWindowAdaptiveInfoV2()
     val koin = getKoin()
     val extraEntries = remember(koin) { koin.getAll<NavEntryContributor>() }
+    val taskColors = remember(koin) { koin.getOrNull<TaskColors>() }
+    val colorsOfTasks by
+        (taskColors?.colors ?: remember { MutableStateFlow<Map<Long, Int>>(emptyMap()) })
+            .collectAsState()
     val topLevelBackStack =
         retain(globalState.startingSection) {
             TopLevelBackStack(
@@ -78,7 +84,10 @@ fun GritNavDisplay(
             )
         }
 
-    CompositionLocalProvider(LocalWindowSizeClass provides adaptiveInfo.windowSizeClass) {
+    CompositionLocalProvider(
+        LocalWindowSizeClass provides adaptiveInfo.windowSizeClass,
+        LocalTaskColors provides colorsOfTasks,
+    ) {
         GritTheme(theme = globalState.theme) {
             SharedTransitionLayout(modifier = modifier.background(colorScheme.background)) {
                 val windowSizeClass = LocalWindowSizeClass.current

@@ -28,8 +28,6 @@ import com.shub39.grit.calendar.data.PhoneCalendars
 import com.shub39.grit.calendar.data.db.AccountEntity
 import com.shub39.grit.calendar.data.db.CategoryEntity
 import com.shub39.grit.calendar.data.db.CollectionEntity
-import com.shub39.grit.core.interfaces.SettingsDatastore
-import com.shub39.grit.core.settings.Sections
 import grit.shared.calendar.generated.resources.Res
 import grit.shared.calendar.generated.resources.error_no_calendar_at_url
 import grit.shared.calendar.generated.resources.error_wrong_login
@@ -52,14 +50,12 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.getString
 import org.koin.core.annotation.KoinViewModel
-import org.koin.core.annotation.Provided
 
 @Immutable
 data class AccountForm(
@@ -84,8 +80,6 @@ data class AccountState(
     val phoneCalendars: List<PhoneCalendar> = emptyList(),
     /** The view that the calendar opens with: 0 month, 1 week, 2 agenda. */
     val defaultView: Int = 0,
-    /** True if Grit opens on the Calendar tab. */
-    val openOnCalendar: Boolean = false,
     val form: AccountForm = AccountForm(),
     val syncing: Boolean = false,
     val loaded: Boolean = false,
@@ -126,7 +120,6 @@ class AccountViewModel(
     private val store: CalendarStore,
     private val syncManager: CalendarSyncManager,
     private val phone: PhoneCalendars,
-    @Provided private val settings: SettingsDatastore,
 ) : ViewModel() {
     private val form = MutableStateFlow(AccountForm())
 
@@ -147,17 +140,8 @@ class AccountViewModel(
                 store.collectionsFlow(),
                 store.categoriesFlow(),
                 combine(syncManager.running, form, store.defaultViewFlow(), ::Triple),
-                combine(
-                    phoneTick.flatMapLatest { phone.calendars() },
-                    settings.getStartingSectionPref().map { it == Sections.Calendar },
-                    ::Pair,
-                ),
-            ) {
-                accounts,
-                collections,
-                categories,
-                (running, form, defaultView),
-                (phoneCalendars, openOnCalendar) ->
+                phoneTick.flatMapLatest { phone.calendars() },
+            ) { accounts, collections, categories, (running, form, defaultView), phoneCalendars ->
                 val account = accounts.firstOrNull { !it.local }
                 val local = accounts.firstOrNull { it.local }
                 AccountState(
@@ -169,7 +153,6 @@ class AccountViewModel(
                     phonePermission = phone.hasPermission(),
                     phoneCalendars = phoneCalendars,
                     defaultView = defaultView,
-                    openOnCalendar = openOnCalendar,
                     form = form,
                     syncing = running,
                     loaded = true,
@@ -311,13 +294,6 @@ class AccountViewModel(
                     importName = calendar.name
                     ImportUi.Choose(calendar.name, resources.size, newCalendarName = calendar.name)
                 }
-        }
-    }
-
-    /** Off goes back to the Tasks tab, the upstream default. */
-    fun setOpenOnCalendar(enabled: Boolean) {
-        viewModelScope.launch {
-            settings.setStartingPage(if (enabled) Sections.Calendar else Sections.Tasks)
         }
     }
 

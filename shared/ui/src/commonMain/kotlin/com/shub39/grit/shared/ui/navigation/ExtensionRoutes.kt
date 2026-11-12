@@ -17,7 +17,9 @@
 package com.shub39.grit.shared.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.navigation3.runtime.EntryProviderScope
+import kotlinx.coroutines.flow.StateFlow
 
 // Extension points for features that live in modules outside :shared:ui (calendar fork).
 
@@ -42,3 +44,27 @@ interface NavEntryContributor {
 interface BackupPageContributor {
     @Composable fun Section()
 }
+
+/**
+ * Colors of tasks. The calendar module keeps them outside the upstream task database, so that the
+ * task schema stays as upstream has it.
+ */
+interface TaskColors {
+    /** ARGB colors by task id. */
+    val colors: StateFlow<Map<Long, Int>>
+
+    /** Saves the color of an existing task. Null removes it. */
+    fun setColor(taskId: Long, color: Int?)
+
+    /** The color that the editor chose for a new task, which has no id before it is saved. */
+    fun setPending(color: Int?)
+
+    /** Gives the pending color to the task that was just saved as [taskId]. */
+    fun assignPending(taskId: Long)
+
+    /** The row of colors in the task editor. */
+    @Composable fun Picker(selected: Int?, onSelect: (Int?) -> Unit)
+}
+
+/** The task colors for the task screens: empty without a [TaskColors] module. */
+val LocalTaskColors = compositionLocalOf<Map<Long, Int>> { emptyMap() }

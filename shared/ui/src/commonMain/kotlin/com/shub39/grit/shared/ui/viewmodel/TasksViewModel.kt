@@ -26,6 +26,7 @@ import com.shub39.grit.core.tasks.Category
 import com.shub39.grit.core.tasks.CategoryColors
 import com.shub39.grit.core.tasks.TaskRepo
 import com.shub39.grit.core.tasks.TasksStatusHandler
+import com.shub39.grit.shared.ui.navigation.TaskColors
 import com.shub39.grit.shared.ui.task.TaskAction
 import com.shub39.grit.shared.ui.task.TaskState
 import kotlin.time.Duration.Companion.milliseconds
@@ -50,6 +51,7 @@ class TasksViewModel(
     @Provided private val datastore: SettingsDatastore,
     @Provided private val analytics: AnalyticsWrapper,
     @Provided private val statusHandler: TasksStatusHandler,
+    @Provided private val taskColors: TaskColors,
 ) : ViewModel() {
 
     companion object {
@@ -91,6 +93,8 @@ class TasksViewModel(
                             )
                         }
                         val newId = repo.upsertTask(action.task)
+                        // A new task gets the color that the editor chose (calendar fork)
+                        if (action.task.id == 0L) taskColors.assignPending(newId)
 
                         scheduler.schedule(action.task.copy(id = newId))
                     }

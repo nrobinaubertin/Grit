@@ -87,4 +87,6 @@
     <string name="monthly">Mensuel</string>
     <string name="yearly">Annuel</string>
     <string name="consistency">Constance</string>
+    <string name="start_screen">Écran de démarrage</string>
+    <string name="start_screen_desc">L\u0027écran que Grit affiche à l\u0027ouverture.</string>
 </resources>

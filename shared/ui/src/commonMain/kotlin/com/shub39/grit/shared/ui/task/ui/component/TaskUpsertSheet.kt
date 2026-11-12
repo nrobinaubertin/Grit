@@ -72,6 +72,8 @@ import com.shub39.grit.shared.ui.components.GritTimePicker
 import com.shub39.grit.shared.ui.components.ListSelect
 import com.shub39.grit.shared.ui.components.detachedItemShape
 import com.shub39.grit.shared.ui.components.listItemColors
+import com.shub39.grit.shared.ui.navigation.LocalTaskColors
+import com.shub39.grit.shared.ui.navigation.TaskColors
 import com.shub39.grit.shared.ui.theme.flexFontEmphasis
 import grit.shared.ui.generated.resources.*
 import kotlin.time.Duration.Companion.milliseconds
@@ -84,6 +86,7 @@ import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.resources.vectorResource
+import org.koin.compose.getKoin
 
 @Composable
 expect fun TaskUpsertSheet(
@@ -113,6 +116,11 @@ fun TaskUpsertSheetContent(
     onPermissionRequest: () -> Unit,
 ) {
     var newTask by retain(task) { mutableStateOf(task) }
+    // The color of the task, kept by the calendar fork outside the task database
+    val koin = getKoin()
+    val taskColors = remember(koin) { koin.getOrNull<TaskColors>() }
+    val initialColor = LocalTaskColors.current[task.id]
+    var color by retain(task) { mutableStateOf(initialColor) }
 
     val textFieldState =
         rememberTextFieldState(
@@ -253,6 +261,8 @@ fun TaskUpsertSheetContent(
                 )
             }
 
+            if (taskColors != null) item { taskColors.Picker(color) { color = it } }
+
             item {
                 Row(
                     modifier = Modifier.padding(bottom = 32.dp),
@@ -274,6 +284,8 @@ fun TaskUpsertSheetContent(
 
                     Button(
                         onClick = {
+                            if (task.id == 0L) taskColors?.setPending(color)
+                            else if (color != initialColor) taskColors?.setColor(task.id, color)
                             onUpsert(newTask.copy(title = textFieldState.text.toString()))
                             onDismissRequest()
                         },
@@ -289,7 +301,8 @@ fun TaskUpsertSheetContent(
                                 isValidDateTime &&
                                 (newTask.reminder != task.reminder ||
                                     textFieldState.text.toString() != task.title ||
-                                    newTask.categoryId != task.categoryId),
+                                    newTask.categoryId != task.categoryId ||
+                                    color != initialColor),
                     ) {
                         Text(
                             stringResource(

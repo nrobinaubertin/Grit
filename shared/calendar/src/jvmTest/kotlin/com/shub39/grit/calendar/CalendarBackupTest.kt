@@ -89,6 +89,15 @@ class CalendarBackupTest {
                 color = "crimson",
             ),
         )
+        // Two task colors (task ids 3 and 8), ARGB stored as unsigned 32-bit
+        for ((task, color) in mapOf(3L to 0xFFDC143C.toInt(), 8L to 0xFF4169E1.toInt())) {
+            phone.dao.putValue(
+                com.shub39.grit.calendar.data.db.KeyValueEntity(
+                    com.shub39.grit.calendar.tasks.TaskColorStore.PREFIX + task,
+                    color.toLong() and 0xFFFFFFFFL,
+                )
+            )
+        }
         val account =
             phone.dao.upsertAccount(AccountEntity(baseUrl = "https://dav", username = "bob"))
         phone.dao.insertCollection(
@@ -156,6 +165,16 @@ class CalendarBackupTest {
         assertFalse(calendars.getValue("https://dav/shared/family/").visible)
         // Read-only until the first sync reads the real access rights
         assertTrue(calendars.values.none { it.canWrite })
+        // Task colors by task id
+        assertEquals(
+            mapOf(3L to 0xFFDC143C.toInt(), 8L to 0xFF4169E1.toInt()),
+            com.shub39.grit.calendar.tasks.TaskColorStore.parse(
+                new.dao
+                    .valuesFlow(com.shub39.grit.calendar.tasks.TaskColorStore.PREFIX)
+                    .first()
+                    .associate { it.key to it.value }
+            ),
+        )
     }
 
     @Test

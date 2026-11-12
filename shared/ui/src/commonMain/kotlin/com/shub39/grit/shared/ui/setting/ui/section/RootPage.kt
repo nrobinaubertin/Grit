@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -29,6 +30,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LargeFlexibleTopAppBar
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -46,7 +50,6 @@ import com.shub39.grit.core.settings.Sections
 import com.shub39.grit.shared.ui.GritPreviewWrapper
 import com.shub39.grit.shared.ui.components.ExpressiveSwitch
 import com.shub39.grit.shared.ui.components.PageFill
-import com.shub39.grit.shared.ui.components.detachedItemShape
 import com.shub39.grit.shared.ui.components.endItemShape
 import com.shub39.grit.shared.ui.components.leadingItemShape
 import com.shub39.grit.shared.ui.components.listItemColors
@@ -100,30 +103,6 @@ fun RootPage(
                     PaddingValues(start = 12.dp, end = 12.dp, top = 16.dp, bottom = 60.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                // Grit Plus
-                item {
-                    ListItem(
-                        headlineContent = { Text(text = stringResource(Res.string.grit_plus)) },
-                        colors = listItemColors(),
-                        modifier =
-                            Modifier.clip(detachedItemShape()).clickable { onNavigateToPaywall() },
-                        trailingContent = {
-                            Icon(
-                                imageVector = vectorResource(Res.drawable.arrow_forward),
-                                contentDescription = "Grit Plus",
-                            )
-                        },
-                        leadingContent = {
-                            Icon(
-                                imageVector = vectorResource(Res.drawable.grit_icon),
-                                contentDescription = null,
-                                modifier = Modifier.size(30.dp),
-                                tint = MaterialTheme.colorScheme.primary,
-                            )
-                        },
-                    )
-                }
-
                 // General settings
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -167,22 +146,39 @@ fun RootPage(
 
                         ListItem(
                             headlineContent = {
-                                Text(text = stringResource(Res.string.show_habits))
+                                Text(text = stringResource(Res.string.start_screen))
                             },
                             supportingContent = {
-                                Text(text = stringResource(Res.string.show_habits_desc))
-                            },
-                            trailingContent = {
-                                ExpressiveSwitch(
-                                    checked = state.startingPage == Sections.Habits,
-                                    onCheckedChange = {
-                                        onAction(
-                                            SettingsAction.ChangeStartingPage(
-                                                if (it) Sections.Habits else Sections.Tasks
-                                            )
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text(text = stringResource(Res.string.start_screen_desc))
+                                    val screens =
+                                        listOf(
+                                            Sections.Tasks to Res.string.tasks,
+                                            Sections.Habits to Res.string.habits,
+                                            Sections.Calendar to Res.string.calendar,
                                         )
-                                    },
-                                )
+                                    SingleChoiceSegmentedButtonRow(
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        screens.forEachIndexed { index, (section, label) ->
+                                            SegmentedButton(
+                                                selected = state.startingPage == section,
+                                                onClick = {
+                                                    onAction(
+                                                        SettingsAction.ChangeStartingPage(section)
+                                                    )
+                                                },
+                                                shape =
+                                                    SegmentedButtonDefaults.itemShape(
+                                                        index,
+                                                        screens.size,
+                                                    ),
+                                            ) {
+                                                Text(stringResource(label))
+                                            }
+                                        }
+                                    }
+                                }
                             },
                             colors = listItemColors(),
                             modifier = Modifier.clip(middleItemShape()),

@@ -103,4 +103,6 @@
     <string name="measure_able">Measurable</string>
     <string name="add_status">Add Status</string>
     <string name="targets">Targets</string>
+    <string name="start_screen">Start screen</string>
+    <string name="start_screen_desc">The screen that Grit shows when it opens.</string>
 </resources>

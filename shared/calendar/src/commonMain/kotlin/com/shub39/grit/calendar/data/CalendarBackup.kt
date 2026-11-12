@@ -21,6 +21,8 @@ import com.shub39.grit.calendar.data.db.AccountEntity
 import com.shub39.grit.calendar.data.db.CalendarDatabase
 import com.shub39.grit.calendar.data.db.CategoryEntity
 import com.shub39.grit.calendar.data.db.CollectionEntity
+import com.shub39.grit.calendar.data.db.KeyValueEntity
+import com.shub39.grit.calendar.tasks.TaskColorStore
 import com.shub39.grit.core.settings.backup.BackupContributor
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.Serializable
@@ -38,6 +40,8 @@ data class CalendarBackupSchema(
     val categories: List<CategoryBackup> = emptyList(),
     val localCalendars: List<LocalCalendarBackup> = emptyList(),
     val accounts: List<AccountBackup> = emptyList(),
+    /** ARGB colors of tasks, by task id. The restore of the tasks keeps their ids. */
+    val taskColors: Map<Long, Int> = emptyMap(),
 )
 
 @Serializable data class CategoryBackup(val name: String, val color: String)
@@ -134,6 +138,12 @@ class CalendarBackup(
                 categories = dao.categoriesFlow().first().map { CategoryBackup(it.name, it.color) },
                 localCalendars = localCalendars,
                 accounts = remoteAccounts,
+                taskColors =
+                    TaskColorStore.parse(
+                        dao.valuesFlow(TaskColorStore.PREFIX).first().associate {
+                            it.key to it.value
+                        }
+                    ),
             )
         return json.encodeToJsonElement(backup)
     }
@@ -145,6 +155,11 @@ class CalendarBackup(
         }
         for (category in backup.categories) {
             dao.upsertCategory(CategoryEntity(category.name, category.color))
+        }
+        for ((taskId, color) in backup.taskColors) {
+            dao.putValue(
+                KeyValueEntity(TaskColorStore.PREFIX + taskId, color.toLong() and 0xFFFFFFFFL)
+            )
         }
         restoreLocalCalendars(backup.localCalendars)
         restoreAccount(backup.accounts.firstOrNull())

@@ -31,7 +31,7 @@ Library versions are in `gradle/calendar.versions.toml`, so that `gradle/libs.ve
 
 ## Changes to upstream files
 
-The fork keeps edits to upstream files small, so that upstream changes merge easily:
+The fork first kept edits to upstream files small, so that upstream changes merged easily. Since version 7.5.0, the fork no longer aims at compatibility with upstream Grit and changes its code where that is simpler. The list below shows the extension points of that first period:
 
 - `settings.gradle.kts`: module includes, the second version catalog, and JitPack for dav4jvm only.
 - `androidApp/build.gradle.kts` and `desktopApp/build.gradle.kts`: one dependency line each.
