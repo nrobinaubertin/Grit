@@ -16,9 +16,11 @@
  */
 package com.shub39.grit.di
 
+import com.shub39.grit.BuildConfig
 import com.shub39.grit.analytics.AnalyticsImpl
 import com.shub39.grit.calendar.di.CalendarModules
 import com.shub39.grit.core.interfaces.AnalyticsWrapper
+import com.shub39.grit.core.interfaces.AppVersion
 import com.shub39.grit.logic.di.LogicModules
 import com.shub39.grit.shared.ui.di.UIModules
 import org.koin.core.annotation.ComponentScan
@@ -31,4 +33,7 @@ import org.koin.core.annotation.Single
 @ComponentScan("com.shub39.grit")
 class GritModules {
     @Single fun provideAnalyticsWrapper(): AnalyticsWrapper = AnalyticsImpl()
+
+    /** The version that About and the settings show. */
+    @Single fun provideAppVersion(): AppVersion = AppVersion(BuildConfig.VERSION_NAME)
 }

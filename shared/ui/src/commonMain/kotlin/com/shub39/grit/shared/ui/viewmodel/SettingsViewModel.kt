@@ -21,6 +21,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.shub39.grit.core.AnalyticsEvent
 import com.shub39.grit.core.interfaces.AnalyticsWrapper
+import com.shub39.grit.core.interfaces.AppVersion
 import com.shub39.grit.core.interfaces.BiometricUtils
 import com.shub39.grit.core.interfaces.ChangelogManager
 import com.shub39.grit.core.interfaces.SettingsDatastore
@@ -51,6 +52,7 @@ class SettingsViewModel(
     @Provided private val themeDatastore: ThemeDatastore,
     @Provided private val settingsDatastore: SettingsDatastore,
     @Provided private val changelogManager: ChangelogManager,
+    @Provided private val appVersion: AppVersion,
     @Provided private val biometricUtils: BiometricUtils,
     @Provided private val analytics: AnalyticsWrapper,
 ) : ViewModel() {
@@ -237,7 +239,8 @@ class SettingsViewModel(
         _state.update {
             it.copy(
                 changelog = currentChangelog,
-                currentVersion = currentChangelog.firstOrNull()?.version,
+                // The version of this build, not the newest upstream release in the changelog
+                currentVersion = appVersion.name,
             )
         }
     }

@@ -25,6 +25,7 @@ import com.shub39.grit.core.habits.Habit
 import com.shub39.grit.core.interfaces.AlarmScheduler
 import com.shub39.grit.core.interfaces.AnalyticsWrapper
 import com.shub39.grit.core.interfaces.AppNotificationManager
+import com.shub39.grit.core.interfaces.AppVersion
 import com.shub39.grit.core.interfaces.BiometricUtils
 import com.shub39.grit.core.tasks.SubTask
 import com.shub39.grit.core.tasks.Task
@@ -68,6 +69,9 @@ class GritModules {
                 GritLogger.d("Analytics", "${event.name}: $properties")
             }
         }
+
+    /** The desktop app is a development build: it has no release version. */
+    @Single fun provideAppVersion(): AppVersion = AppVersion("desktop")
 
     @Single
     fun getAlarmScheduler(): AlarmScheduler =
