@@ -16,6 +16,9 @@
  */
 package com.shub39.grit.shared.ui.theme
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialExpressiveTheme
@@ -23,8 +26,11 @@ import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 import com.materialkolor.rememberDynamicColorScheme
 import com.shub39.grit.core.theme.Theme
 import com.shub39.grit.shared.ui.toFontRes
@@ -38,6 +44,24 @@ actual fun GritTheme(theme: Theme, content: @Composable (() -> Unit)) {
             LIGHT -> false
             DARK -> true
         }
+
+    // The activity sets the system bars from the system theme (enableEdgeToEdge). Grit can have
+    // its own theme: the bars must follow it, or their icons are dark on a dark screen
+    val view = LocalView.current
+    if (!view.isInEditMode) {
+        SideEffect {
+            val window = view.context.findActivity()?.window ?: return@SideEffect
+            WindowCompat.getInsetsController(window, view).apply {
+                isAppearanceLightStatusBars = !isDark
+                isAppearanceLightNavigationBars = !isDark
+            }
+            // Before Android 10, the navigation bar has a solid background of its own
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                @Suppress("DEPRECATION")
+                window.navigationBarColor = if (isDark) DARK_SCRIM else LIGHT_SCRIM
+            }
+        }
+    }
 
     val dynamicColorScheme =
         rememberDynamicColorScheme(
@@ -64,3 +88,14 @@ actual fun GritTheme(theme: Theme, content: @Composable (() -> Unit)) {
         content = content,
     )
 }
+
+/** The navigation bar backgrounds of enableEdgeToEdge, for Android 8 and 9. */
+private const val LIGHT_SCRIM = 0xE6FFFFFF.toInt()
+private const val DARK_SCRIM = 0x801B1B1B.toInt()
+
+private tailrec fun Context.findActivity(): Activity? =
+    when (this) {
+        is Activity -> this
+        is ContextWrapper -> baseContext.findActivity()
+        else -> null
+    }
