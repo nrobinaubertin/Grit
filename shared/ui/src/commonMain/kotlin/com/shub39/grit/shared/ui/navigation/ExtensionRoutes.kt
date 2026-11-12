@@ -66,5 +66,11 @@ interface TaskColors {
     @Composable fun Picker(selected: Int?, onSelect: (Int?) -> Unit)
 }
 
+/** Sync of task lists with a server, which the calendar module provides. */
+interface TaskSync {
+    /** Asks for a sync soon, for example when the task list opens. */
+    fun requestSync()
+}
+
 /** The task colors for the task screens: empty without a [TaskColors] module. */
 val LocalTaskColors = compositionLocalOf<Map<Long, Int>> { emptyMap() }

@@ -9,6 +9,7 @@ The changes in this fork are completely vibe coded: an AI coding assistant wrote
 - A Calendar tab that syncs with a CalDAV server, for example Radicale. Two people can share calendars without another sync app such as DAVx5. The tab has month, week and agenda views, categories with colors, reminders, and calendars that stay on the device only. It imports `.ics` files, and the Grit backup file also contains the calendars. On Android, it can also import the calendars of other apps on the phone. See [shared/calendar/README.md](shared/calendar/README.md) and the server setup in [server/radicale/README.md](server/radicale/README.md).
 - Task colors: each task can have a color, chosen in the task editor and shown as a stripe on the task.
 - Tasks in the calendar: an open task with a reminder shows in the month, week and agenda views at the time of its reminder, in the color of the task.
+- Task list sync: a task category syncs with a task list on the same CalDAV server, with subtasks, done state, reminders and order. Two people can share a task list. See "Task lists" in [shared/calendar/README.md](shared/calendar/README.md).
 - A start screen setting (Tasks, Habits or Calendar) in the general settings, and no Grit Plus block.
 - Automatic backups on Android: daily, weekly or monthly, Grit writes its backup file into a folder that you choose, and keeps the number of newest files that you choose. Find them under Backup in the Grit settings.
 

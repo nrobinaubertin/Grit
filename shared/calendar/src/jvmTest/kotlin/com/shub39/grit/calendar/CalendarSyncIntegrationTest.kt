@@ -56,7 +56,14 @@ class CalendarSyncIntegrationTest {
                 "grit.calendar.dir",
                 Files.createTempDirectory("grit-$user").toString(),
             )
-            manager = CalendarSyncManager(db, store, CredentialStore(), ReminderScheduler())
+            manager =
+                CalendarSyncManager(
+                    db,
+                    store,
+                    CredentialStore(),
+                    ReminderScheduler(),
+                    com.shub39.grit.calendar.tasks.TaskListSync(db, store, FakeTaskRepo(), NoAlarms),
+                )
         }
 
         suspend fun connect() {

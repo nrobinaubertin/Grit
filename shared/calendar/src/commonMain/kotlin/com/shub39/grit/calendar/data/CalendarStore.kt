@@ -285,6 +285,8 @@ class CalendarStore(private val db: CalendarDatabase) {
     suspend fun applyRemote(collectionId: Long, items: List<RemoteItem>) {
         for (item in items) {
             val ics = item.ics ?: continue
+            // A calendar can hold to-dos too: the task lists sync them
+            if (!ics.contains("BEGIN:VEVENT")) continue
             val existing = dao.eventByHref(collectionId, item.href)
             if (existing?.dirty == true) continue
             val event = fromServer(collectionId, item.href, item.etag, ics, existing)

@@ -56,8 +56,8 @@ The test data has two users and three calendars:
 
 | User | Password | Calendars that the user sees |
 |---|---|---|
-| alice | alice | `alice/personal`, `alice/family` |
-| bob | bob | `bob/work`, `bob/family` (shared from alice, writable), `bob/alice-personal` (shared from alice, read-only) |
+| alice | alice | `alice/personal`, `alice/family`, the task list `alice/chores` |
+| bob | bob | `bob/work`, `bob/family` (shared from alice, writable), `bob/alice-personal` (shared from alice, read-only), the task list `bob/chores` (shared from alice, writable) |
 
 ### Connect the desktop app
 

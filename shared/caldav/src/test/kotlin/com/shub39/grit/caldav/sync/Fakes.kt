@@ -113,6 +113,7 @@ class FakeServer : DavClient {
         url: String,
         displayName: String,
         color: Int?,
+        type: ComponentType,
     ): WriteResult {
         requests += "MKCALENDAR $url $displayName"
         return if (canWrite) WriteResult.Ok(null) else WriteResult.Forbidden

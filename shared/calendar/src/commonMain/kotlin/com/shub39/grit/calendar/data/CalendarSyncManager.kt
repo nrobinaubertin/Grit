@@ -18,6 +18,7 @@ package com.shub39.grit.calendar.data
 
 import com.shub39.grit.caldav.AuthenticationException
 import com.shub39.grit.caldav.CollectionInfo
+import com.shub39.grit.caldav.ComponentType
 import com.shub39.grit.caldav.Credentials
 import com.shub39.grit.caldav.Discovery
 import com.shub39.grit.caldav.KtorDavClient
@@ -30,6 +31,7 @@ import com.shub39.grit.calendar.data.db.AccountEntity
 import com.shub39.grit.calendar.data.db.CalendarDatabase
 import com.shub39.grit.calendar.data.db.CollectionEntity
 import com.shub39.grit.calendar.data.db.KeyValueEntity
+import com.shub39.grit.calendar.tasks.TaskListSync
 import grit.shared.calendar.generated.resources.Res
 import grit.shared.calendar.generated.resources.error_password_missing
 import grit.shared.calendar.generated.resources.error_wrong_login
@@ -44,13 +46,14 @@ import kotlinx.coroutines.sync.withLock
 import org.jetbrains.compose.resources.getString
 import org.koin.core.annotation.Single
 
-/** Accounts, calendar discovery, and sync of all calendars. */
+/** Accounts, calendar discovery, and sync of all calendars and task lists. */
 @Single
 class CalendarSyncManager(
     db: CalendarDatabase,
     private val store: CalendarStore,
     private val credentials: CredentialStore,
     private val reminders: ReminderScheduler,
+    private val taskLists: TaskListSync,
 ) {
     private val dao = db.calendarDao()
     private val clock: Clock = Clock.System
@@ -82,6 +85,7 @@ class CalendarSyncManager(
             )
         credentials.save(accountId, password)
         mergeCollections(accountId, discovery.collections)
+        taskLists.merge(accountId, discovery.collections)
         return accountId
     }
 
@@ -161,6 +165,31 @@ class CalendarSyncManager(
                     if (result !is WriteResult.Ok) throw StartSyncingException(result.describe())
                     moveToServer(calendar, account, url)
                 }
+            }
+        }
+        syncAll()
+    }
+
+    /**
+     * Creates a task list on the CalDAV server for the Grit task category [categoryId], named
+     * [name], then syncs: the tasks of the category upload.
+     */
+    suspend fun startSyncingTasks(categoryId: Long, name: String) {
+        mutex.withLock {
+            val account =
+                dao.accounts().firstOrNull { !it.local }
+                    ?: throw StartSyncingException("No CalDAV server is connected")
+            val password =
+                credentials.load(account.id) ?: throw AuthenticationException("No password")
+            val home =
+                account.homeSetUrl
+                    ?: account.principalUrl
+                    ?: throw StartSyncingException("The server did not give a calendar home")
+            KtorDavClient(account.baseUrl, Credentials(account.username, password)).use { dav ->
+                val url = home.trimEnd('/') + "/" + UUID.randomUUID() + "/"
+                val result = dav.createCalendar(url, name, null, ComponentType.VTODO)
+                if (result !is WriteResult.Ok) throw StartSyncingException(result.describe())
+                taskLists.addCreated(account.id, url, name, categoryId)
             }
         }
         syncAll()
@@ -400,7 +429,9 @@ class CalendarSyncManager(
         try {
             KtorDavClient(account.baseUrl, Credentials(account.username, password)).use { dav ->
                 // Refresh names, colors and access rights, and find new or removed calendars
-                mergeCollections(account.id, dav.discover(account.baseUrl).collections)
+                val found = dav.discover(account.baseUrl).collections
+                mergeCollections(account.id, found)
+                taskLists.merge(account.id, found)
                 for (manual in dao.collections(account.id).filter { it.manual }) {
                     dav.collection(manual.url)
                         ?.let { refreshed(manual, it) }
@@ -429,6 +460,7 @@ class CalendarSyncManager(
                         result,
                     )
                 }
+                taskLists.syncAccount(dav, account.id)
             }
             dao.setAccountSyncResult(account.id, clock.now().toEpochMilliseconds(), null)
         } catch (e: CancellationException) {

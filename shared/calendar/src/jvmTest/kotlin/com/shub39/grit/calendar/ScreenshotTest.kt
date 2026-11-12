@@ -319,6 +319,24 @@ class ScreenshotTest {
                     canWrite = false,
                 )
             )
+            // Task lists: one syncs with the category "chores", one does not sync
+            val lists = db.taskListDao()
+            lists.insertList(
+                com.shub39.grit.calendar.data.db.TaskListEntity(
+                    accountId = account,
+                    url = "https://dav/bob/chores/",
+                    displayName = "chores",
+                    categoryId = 2,
+                    paired = true,
+                )
+            )
+            lists.insertList(
+                com.shub39.grit.calendar.data.db.TaskListEntity(
+                    accountId = account,
+                    url = "https://dav/bob/groceries/",
+                    displayName = "groceries",
+                )
+            )
         }
         val store = CalendarStore(db)
         runBlocking {
@@ -326,12 +344,20 @@ class ScreenshotTest {
             store.createCategory("Family", "crimson")
             store.createCategory("Work", "teal")
         }
+        val taskRepo = FakeTaskRepo()
+        runBlocking {
+            taskRepo.upsertCategory(
+                com.shub39.grit.core.tasks.Category(name = "chores", index = 1, color = "")
+            )
+        }
+        val taskLists = com.shub39.grit.calendar.tasks.TaskListSync(db, store, taskRepo, NoAlarms)
         val manager =
             com.shub39.grit.calendar.data.CalendarSyncManager(
                 db,
                 store,
                 com.shub39.grit.calendar.data.CredentialStore(),
                 com.shub39.grit.calendar.data.ReminderScheduler(),
+                taskLists,
             )
         val viewModel =
             com.shub39.grit.calendar.ui.account.AccountViewModel(
@@ -340,6 +366,8 @@ class ScreenshotTest {
                 com.shub39.grit.calendar.data.PhoneCalendars(
                     com.shub39.grit.calendar.data.PhoneCalendarSource()
                 ),
+                taskLists,
+                taskRepo,
             )
         shoot(
             "calendar-account",
@@ -371,12 +399,15 @@ class ScreenshotTest {
             store.createCategory("Family", "crimson")
             store.createCategory("Work", "teal")
         }
+        val taskRepo = FakeTaskRepo()
+        val taskLists = com.shub39.grit.calendar.tasks.TaskListSync(db, store, taskRepo, NoAlarms)
         val manager =
             com.shub39.grit.calendar.data.CalendarSyncManager(
                 db,
                 store,
                 com.shub39.grit.calendar.data.CredentialStore(),
                 com.shub39.grit.calendar.data.ReminderScheduler(),
+                taskLists,
             )
         val viewModel =
             com.shub39.grit.calendar.ui.account.AccountViewModel(
@@ -385,6 +416,8 @@ class ScreenshotTest {
                 com.shub39.grit.calendar.data.PhoneCalendars(
                     com.shub39.grit.calendar.data.PhoneCalendarSource()
                 ),
+                taskLists,
+                taskRepo,
             )
         shoot(
             "calendar-account-local",

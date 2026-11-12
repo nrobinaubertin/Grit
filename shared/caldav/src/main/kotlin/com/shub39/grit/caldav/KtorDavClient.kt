@@ -226,6 +226,7 @@ class KtorDavClient(private val client: HttpClient) : DavClient, Closeable {
         url: String,
         displayName: String,
         color: Int?,
+        type: ComponentType,
     ): WriteResult = write {
         val colorProperty =
             color?.let { "<I:calendar-color>#%06X</I:calendar-color>".format(it and 0xFFFFFF) }
@@ -235,7 +236,7 @@ class KtorDavClient(private val client: HttpClient) : DavClient, Closeable {
                 "xmlns:I=\"http://apple.com/ns/ical/\"><D:set><D:prop>" +
                 "<D:displayname>${escapeXml(displayName)}</D:displayname>" +
                 colorProperty.orEmpty() +
-                "<C:supported-calendar-component-set><C:comp name=\"VEVENT\"/>" +
+                "<C:supported-calendar-component-set><C:comp name=\"${type.name}\"/>" +
                 "</C:supported-calendar-component-set></D:prop></D:set></C:mkcalendar>"
         DavResource(client, Url(url)).mkCol(body, "MKCALENDAR") { WriteResult.Ok(null) }
     }

@@ -34,18 +34,27 @@ import org.koin.core.annotation.Single
             ConflictEntity::class,
             KeyValueEntity::class,
             CategoryEntity::class,
+            TaskListEntity::class,
+            TaskItemEntity::class,
         ],
     version = CalendarDatabase.SCHEMA_VERSION,
     exportSchema = true,
-    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3)],
+    autoMigrations =
+        [
+            AutoMigration(from = 1, to = 2),
+            AutoMigration(from = 2, to = 3),
+            AutoMigration(from = 3, to = 4),
+        ],
 )
 @ConstructedBy(CalendarDbConstructor::class)
 abstract class CalendarDatabase : RoomDatabase() {
     abstract fun calendarDao(): CalendarDao
 
+    abstract fun taskListDao(): TaskListDao
+
     companion object {
         const val DB_NAME = "calendar_database"
-        const val SCHEMA_VERSION = 3
+        const val SCHEMA_VERSION = 4
     }
 }
 

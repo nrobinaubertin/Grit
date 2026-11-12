@@ -60,7 +60,14 @@ class SyncToggleIntegrationTest {
 
     private suspend fun bob(): CalendarSyncManager {
         System.setProperty("grit.calendar.dir", Files.createTempDirectory("grit-toggle").toString())
-        val manager = CalendarSyncManager(db, store, CredentialStore(), ReminderScheduler())
+        val manager =
+            CalendarSyncManager(
+                db,
+                store,
+                CredentialStore(),
+                ReminderScheduler(),
+                com.shub39.grit.calendar.tasks.TaskListSync(db, store, FakeTaskRepo(), NoAlarms),
+            )
         manager.addAccount(baseUrl, "bob", "bob", manager.discover(baseUrl, "bob", "bob"))
         manager.syncAll()
         return manager

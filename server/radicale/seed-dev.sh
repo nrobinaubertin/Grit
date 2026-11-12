@@ -3,6 +3,7 @@
 #
 #   alice/personal  alice's calendar, shared read-only to bob as bob/alice-personal
 #   alice/family    shared to bob with write access as bob/family
+#   alice/chores    a task list, shared to bob with write access as bob/chores
 #   bob/work        bob's own calendar
 set -eu
 
@@ -26,7 +27,7 @@ if [ "$status" = 207 ]; then
     exit 0
 fi
 
-mkcalendar() { # user name color
+mkcalendar() { # user name color [component]
     curl -sf -u "$1:$1" -X MKCALENDAR "$base/$1/$2/" \
         -H "Content-Type: application/xml; charset=utf-8" --data-binary @- >/dev/null <<XML
 <?xml version="1.0" encoding="utf-8"?>
@@ -34,7 +35,7 @@ mkcalendar() { # user name color
   <D:set><D:prop>
     <D:displayname>$2</D:displayname>
     <I:calendar-color>$3</I:calendar-color>
-    <C:supported-calendar-component-set><C:comp name="VEVENT"/></C:supported-calendar-component-set>
+    <C:supported-calendar-component-set><C:comp name="${4:-VEVENT}"/></C:supported-calendar-component-set>
   </D:prop></D:set>
 </C:mkcalendar>
 XML
@@ -62,6 +63,16 @@ event() { # user calendar uid summary dtstart dtend [rrule]
         --data-binary @- >/dev/null
 }
 
+todo() { # user calendar uid summary
+    {
+        printf 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Grit//seed//EN\r\nBEGIN:VTODO\r\n'
+        printf 'UID:%s\r\nDTSTAMP:20260101T000000Z\r\nSUMMARY:%s\r\n' "$3" "$4"
+        printf 'STATUS:NEEDS-ACTION\r\nEND:VTODO\r\nEND:VCALENDAR\r\n'
+    } | curl -sf -u "$1:$1" -X PUT "$base/$1/$2/$3.ics" \
+        -H "Content-Type: text/calendar; charset=utf-8" -H "If-None-Match: *" \
+        --data-binary @- >/dev/null
+}
+
 # Create the principal collections by touching them once
 for user in alice bob; do
     curl -sf -u "$user:$user" -X PROPFIND -H "Depth: 0" "$base/$user/" >/dev/null
@@ -70,13 +81,16 @@ done
 mkcalendar alice personal "#3F51B5"
 mkcalendar alice family "#E91E63"
 mkcalendar bob work "#009688"
+mkcalendar alice chores "#FF9800" VTODO
 
 share alice /bob/alice-personal/ /alice/personal/ bob r
 share alice /bob/family/ /alice/family/ bob rw
+share alice /bob/chores/ /alice/chores/ bob rw
 
 today=$(date +%Y%m%d)
 event alice personal dentist "Dentist" "${today}T090000" "${today}T100000"
 event alice family groceries "Groceries" "${today}T180000" "${today}T190000" "FREQ=WEEKLY;COUNT=10"
 event bob work standup "Standup" "${today}T093000" "${today}T094500" "FREQ=DAILY;BYDAY=MO,TU,WE,TH,FR"
+todo alice chores bins "Take out the bins"
 
-echo "Seeded alice/personal, alice/family (shared to bob), bob/work"
+echo "Seeded alice/personal, alice/family and alice/chores (shared to bob), bob/work"

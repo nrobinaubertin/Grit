@@ -139,4 +139,12 @@
     <string name="tasks_with_date">Tâches avec une date</string>
     <string name="task">Tâche</string>
     <string name="mark_done">Marquer comme faite</string>
+    <string name="task_lists">Listes de tâches</string>
+    <string name="task_lists_body">Une liste de tâches du serveur se synchronise avec une catégorie de tâches de Grit. Les personnes qui partagent une liste voient les mêmes tâches.</string>
+    <string name="task_list_synced">Synchronisée avec la catégorie « %1$s »</string>
+    <string name="task_list_not_synced">Non synchronisée</string>
+    <string name="task_category_local">Catégorie de Grit, sur cet appareil uniquement</string>
+    <string name="task_list_stop_confirm">Ne plus synchroniser « %1$s » ? La catégorie de Grit et ses tâches restent sur cet appareil, et la liste reste sur le serveur.</string>
+    <string name="task_category_start_confirm">Mettre « %1$s » sur le serveur ? Grit crée une liste de tâches de ce nom sur votre serveur CalDAV et y envoie les tâches de la catégorie.</string>
+    <string name="start_syncing_tasks_failed">Grit n’a pas pu mettre cette catégorie sur le serveur : %1$s</string>
 </resources>

@@ -29,15 +29,13 @@ import com.shub39.grit.calendar.data.ReminderScheduler
 import com.shub39.grit.calendar.data.SyncScheduler
 import com.shub39.grit.calendar.data.db.CalendarDatabase
 import com.shub39.grit.calendar.tasks.TaskColorStore
+import com.shub39.grit.calendar.tasks.TaskListSync
 import com.shub39.grit.calendar.ui.home.CalendarAction
 import com.shub39.grit.calendar.ui.home.CalendarUiState
 import com.shub39.grit.calendar.ui.home.CalendarViewModel
 import com.shub39.grit.calendar.ui.home.DayEvent
 import com.shub39.grit.calendar.ui.home.TASK_MARK
 import com.shub39.grit.calendar.ui.home.toDayEvent
-import com.shub39.grit.core.habits.Habit
-import com.shub39.grit.core.interfaces.AlarmScheduler
-import com.shub39.grit.core.tasks.SubTask
 import com.shub39.grit.core.tasks.Task
 import com.shub39.grit.core.tasks.TasksStatusHandler
 import java.nio.file.Files
@@ -68,22 +66,6 @@ class CalendarTasksTest {
     private val today =
         java.time.LocalDate.now().let { LocalDate(it.year, it.monthValue, it.dayOfMonth) }
 
-    private object NoAlarms : AlarmScheduler {
-        override fun schedule(habit: Habit) = Unit
-
-        override fun schedule(task: Task) = Unit
-
-        override fun schedule(subTask: SubTask) = Unit
-
-        override fun cancel(habit: Habit) = Unit
-
-        override fun cancel(task: Task) = Unit
-
-        override fun cancel(subTask: SubTask) = Unit
-
-        override fun cancelAll() = Unit
-    }
-
     @AfterTest
     fun close() {
         viewModels.clear()
@@ -94,7 +76,14 @@ class CalendarTasksTest {
     private fun viewModel(): CalendarViewModel {
         System.setProperty("grit.calendar.dir", Files.createTempDirectory("grit-tasks").toString())
         val store = CalendarStore(db)
-        val manager = CalendarSyncManager(db, store, CredentialStore(), ReminderScheduler())
+        val manager =
+            CalendarSyncManager(
+                db,
+                store,
+                CredentialStore(),
+                ReminderScheduler(),
+                TaskListSync(db, store, repo, NoAlarms),
+            )
         // Through a store, so that the test can clear the view model and stop its flows
         val factory = viewModelFactory {
             initializer {

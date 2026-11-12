@@ -28,12 +28,15 @@ import com.shub39.grit.calendar.data.PhoneCalendars
 import com.shub39.grit.calendar.data.db.AccountEntity
 import com.shub39.grit.calendar.data.db.CategoryEntity
 import com.shub39.grit.calendar.data.db.CollectionEntity
+import com.shub39.grit.calendar.tasks.TaskListSync
+import com.shub39.grit.core.tasks.TaskRepo
 import grit.shared.calendar.generated.resources.Res
 import grit.shared.calendar.generated.resources.error_no_calendar_at_url
 import grit.shared.calendar.generated.resources.error_wrong_login
 import grit.shared.calendar.generated.resources.import_no_events
 import grit.shared.calendar.generated.resources.import_unreadable
 import grit.shared.calendar.generated.resources.start_syncing_failed
+import grit.shared.calendar.generated.resources.start_syncing_tasks_failed
 import grit.shared.calendar.generated.resources.stop_syncing_deleted
 import grit.shared.calendar.generated.resources.stop_syncing_kept_shared
 import grit.shared.calendar.generated.resources.stop_syncing_kept_unknown
@@ -45,17 +48,21 @@ import io.github.vinceglb.filekit.name
 import io.github.vinceglb.filekit.readString
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jetbrains.compose.resources.getString
 import org.koin.core.annotation.KoinViewModel
+import org.koin.core.annotation.Provided
 
 @Immutable
 data class AccountForm(
@@ -83,7 +90,25 @@ data class AccountState(
     val form: AccountForm = AccountForm(),
     val syncing: Boolean = false,
     val loaded: Boolean = false,
+    /** Task lists of the server, synced or not. */
+    val taskLists: List<TaskListUi> = emptyList(),
+    /** Grit task categories that sync with no list. */
+    val localTaskCategories: List<TaskCategoryUi> = emptyList(),
 )
+
+/** A task list of the server, and the Grit category it syncs with. */
+@Immutable
+data class TaskListUi(
+    val id: Long,
+    val name: String,
+    /** Null if the list does not sync. */
+    val categoryName: String?,
+    val canWrite: Boolean,
+    val error: String?,
+)
+
+/** A Grit task category. */
+@Immutable data class TaskCategoryUi(val id: Long, val name: String)
 
 /** A "Start syncing" that runs or failed. */
 @Immutable
@@ -120,6 +145,8 @@ class AccountViewModel(
     private val store: CalendarStore,
     private val syncManager: CalendarSyncManager,
     private val phone: PhoneCalendars,
+    private val taskLists: TaskListSync,
+    @Provided taskRepo: TaskRepo,
 ) : ViewModel() {
     private val form = MutableStateFlow(AccountForm())
 
@@ -134,14 +161,43 @@ class AccountViewModel(
     /** Changes when the calendar permission might have changed, to read the calendars again. */
     private val phoneTick = MutableStateFlow(0)
 
+    private val tasks: Flow<Pair<List<TaskListUi>, List<TaskCategoryUi>>> =
+        combine(taskLists.lists, taskRepo.getTasksFlow().map { it.keys.toList() }) {
+                lists,
+                categories ->
+                val names = categories.associate { it.id to it.name }
+                val ui =
+                    lists.map {
+                        TaskListUi(
+                            id = it.id,
+                            name = it.displayName ?: it.url.trimEnd('/').substringAfterLast('/'),
+                            categoryName = it.categoryId?.let { id -> names[id] ?: "" },
+                            canWrite = it.canWrite,
+                            error = it.lastError,
+                        )
+                    }
+                val synced = lists.mapNotNull { it.categoryId }.toSet()
+                ui to
+                    categories
+                        .filter { it.id !in synced }
+                        .sortedBy { it.index }
+                        .map { TaskCategoryUi(it.id, it.name) }
+            }
+            .distinctUntilChanged()
+
     val state: StateFlow<AccountState> =
         combine(
                 store.accountsFlow(),
                 store.collectionsFlow(),
                 store.categoriesFlow(),
                 combine(syncManager.running, form, store.defaultViewFlow(), ::Triple),
-                phoneTick.flatMapLatest { phone.calendars() },
-            ) { accounts, collections, categories, (running, form, defaultView), phoneCalendars ->
+                combine(phoneTick.flatMapLatest { phone.calendars() }, tasks, ::Pair),
+            ) {
+                accounts,
+                collections,
+                categories,
+                (running, form, defaultView),
+                (phoneCalendars, tasks) ->
                 val account = accounts.firstOrNull { !it.local }
                 val local = accounts.firstOrNull { it.local }
                 AccountState(
@@ -156,6 +212,8 @@ class AccountViewModel(
                     form = form,
                     syncing = running,
                     loaded = true,
+                    taskLists = if (account == null) emptyList() else tasks.first,
+                    localTaskCategories = tasks.second,
                 )
             }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AccountState())
@@ -242,6 +300,42 @@ class AccountViewModel(
                         getString(Res.string.stop_syncing_kept_unknown, name)
                 }
             syncToggle.value = SyncToggleUi.Done(message)
+        }
+    }
+
+    /** Syncs a server task list with a Grit category of the same name. */
+    fun startSyncingTaskList(listId: Long) {
+        viewModelScope.launch {
+            taskLists.link(listId)
+            syncManager.syncAll()
+        }
+    }
+
+    /** Keeps the category and its tasks on this device, and the list on the server. */
+    fun stopSyncingTaskList(listId: Long) {
+        viewModelScope.launch { taskLists.unlink(listId) }
+    }
+
+    /** Creates a task list on the server for a Grit category and uploads its tasks. */
+    fun startSyncingCategory(category: TaskCategoryUi) {
+        syncToggle.value = SyncToggleUi.Running
+        viewModelScope.launch {
+            syncToggle.value =
+                try {
+                    syncManager.startSyncingTasks(category.id, category.name)
+                    null
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: AuthenticationException) {
+                    SyncToggleUi.Failed(getString(Res.string.error_wrong_login))
+                } catch (e: Exception) {
+                    SyncToggleUi.Failed(
+                        getString(
+                            Res.string.start_syncing_tasks_failed,
+                            e.message ?: e::class.simpleName.orEmpty(),
+                        )
+                    )
+                }
         }
     }
 

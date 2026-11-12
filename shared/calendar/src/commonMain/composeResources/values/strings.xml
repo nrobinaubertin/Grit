@@ -139,4 +139,12 @@
     <string name="tasks_with_date">Tasks with a date</string>
     <string name="task">Task</string>
     <string name="mark_done">Mark as done</string>
+    <string name="task_lists">Task lists</string>
+    <string name="task_lists_body">A task list on the server syncs with a Grit task category. People who share a list see the same tasks.</string>
+    <string name="task_list_synced">Syncs with the category “%1$s”</string>
+    <string name="task_list_not_synced">Not synced</string>
+    <string name="task_category_local">Grit category, on this device only</string>
+    <string name="task_list_stop_confirm">Stop syncing “%1$s”? The Grit category and its tasks stay on this device, and the list stays on the server.</string>
+    <string name="task_category_start_confirm">Put “%1$s” on the server? Grit creates a task list with this name on your CalDAV server and uploads the tasks of the category.</string>
+    <string name="start_syncing_tasks_failed">Grit could not put this category on the server: %1$s</string>
 </resources>

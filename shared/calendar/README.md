@@ -13,11 +13,37 @@ This fork of Grit adds a Calendar tab that syncs with a CalDAV server, for examp
   - "Stop syncing" on a server calendar keeps its events on this device only. If the calendar is yours alone, Grit deletes it from the server, and your other devices lose it. Grit asks the Radicale sharing API: a calendar that you shared, or that someone shared with you, stays on the server. If Grit cannot tell, for example with another server or without a connection, the calendar also stays. Grit then leaves the kept calendar out of later syncs.
 - It imports `.ics` files, for example the export of another calendar app, into a calendar that you choose. A series stays together with its changed occurrences. An event that is already in the calendar (same UID) is updated, so a second import of the same file adds nothing.
 - It shows the open tasks that have a reminder, at the time of the reminder, with a check box before the title and in the color of the task. The task stays in the Grit task list: the calendar does not copy it and does not sync it. Select the task to see its category, or to mark it as done. A task that is done loses its reminder, so it leaves the calendar. "Tasks with a date" in the "Shown calendars" list hides the tasks. Subtasks do not show.
+- It syncs Grit task categories with task lists on the server (see "Task lists" below).
 - It shows reminders as Android notifications. The Grit setting that pauses notifications also pauses calendar reminders.
-- It syncs at these times: every 30 minutes, 5 seconds after a local change, at the opening of the tab, and on pull-to-refresh.
+- It syncs at these times: every 30 minutes, 5 seconds after a local change, at the opening of the Calendar tab or of the Tasks tab, and on pull-to-refresh.
 - On Android, it imports the calendars of other apps, for example Google Calendar or DAVx5. These apps keep their calendars in the Android calendar provider (the shared calendar storage of the phone). Choose a calendar under "Calendars from other apps" on the "Calendars and accounts" screen, then a new calendar on this device or one of your calendars as the target. The events become normal Grit events, with their changed occurrences and their reminders. Grit does not see later changes in the other app: import the calendar again to update it.
 
 The desktop app syncs while it runs and has no reminders, like the upstream desktop app.
+
+## Task lists
+
+A task list is a collection of to-dos (iCalendar VTODO) on the CalDAV server. One Grit task category syncs with one task list. Two people who share a list on the server see the same tasks. Other task apps, for example Tasks.org or Thunderbird, can use the same lists.
+
+The "Task lists" section of the "Calendars and accounts" screen shows the task lists of the server and the Grit categories that are on this device only:
+
+- "Start syncing" on a server list syncs it with the Grit category of the same name. If no such category exists, Grit creates it. The first sync pairs the Grit tasks and the server to-dos that have the same title, so a list that you sync again gets no copies.
+- "Start syncing" on a Grit category creates a task list with that name on the server and uploads the tasks.
+- "Stop syncing" keeps the category and its tasks on this device, and the list on the server.
+- If you delete a synced category in Grit, the sync of its list stops. The server keeps the to-dos.
+
+Grit maps the task fields to the to-do as follows:
+
+| Grit | To-do |
+|---|---|
+| Title | `SUMMARY` |
+| Done | `STATUS:COMPLETED`, with `COMPLETED` and `PERCENT-COMPLETE:100` |
+| Reminder | `DUE` as a local time without a time zone, and a display alarm at that time |
+| Order | `X-APPLE-SORT-ORDER`, which Apple Reminders and other task apps also use |
+| Subtask | `RELATED-TO` with the UID of the parent to-do |
+
+Grit changes only the fields that differ, and it keeps the properties that it does not know, for example priority or notes from another app. A done task keeps its due date on the server, although Grit clears the reminder. A due date without a time becomes a reminder at 09:00. Grit has one level of subtasks: a to-do under a subtask becomes a subtask of the top task.
+
+The Grit task database does not record changes. Grit finds them by comparison: for each synced task, the calendar database keeps the Grit fields as Grit last saw them. A change made anywhere in Grit, for example in the task list, a widget or a notification, shows as a difference one second later, and the sync starts 5 seconds after that. If a task changed on both sides, the newer change wins, as for events.
 
 ## Modules
 
@@ -26,7 +52,7 @@ The desktop app syncs while it runs and has no reminders, like the upstream desk
 | `:shared:caldav` | Plain JVM module. CalDAV client (dav4jvm over Ktor), iCalendar layer (ical4j), and the generic sync engine. |
 | `:shared:calendar` | Kotlin Multiplatform module (Android and desktop). Room database, sync and reminder scheduling, screens. |
 
-The sync engine works through the `LocalCollection` interface. A later task-list sync (VTODO) can use the same engine with its own `LocalCollection`.
+The sync engine works through the `LocalCollection` interface. Events use `EventCollection`, and task lists use `TaskCollection` (package `tasks`).
 
 Library versions are in `gradle/calendar.versions.toml`, so that `gradle/libs.versions.toml` stays as upstream has it.
 
@@ -90,5 +116,8 @@ GRIT_SCREENSHOTS=/tmp/grit-shots ./gradlew :shared:calendar:jvmTest --tests '*Sc
 - Grit creates a server calendar only through "Start syncing". For an empty one, use the web interface of the server.
 - A single occurrence of a repeating event cannot be edited, only deleted.
 - No day view with hours.
+- A task list that you can only read gets no changes from Grit: Grit undoes them at the next sync.
+- Category names, category colors and task colors do not sync.
+- The Grit backup file does not contain which categories sync with which task lists. After a restore, start syncing the lists again: tasks with the same title pair, so no copies appear.
 - If two people change the same event between two syncs, the newer change wins. Grit keeps the other version in the database, but does not show it.
 - No invitations or attendees.

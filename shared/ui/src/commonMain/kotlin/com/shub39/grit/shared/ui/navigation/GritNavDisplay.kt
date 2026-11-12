@@ -68,6 +68,7 @@ fun GritNavDisplay(
     val koin = getKoin()
     val extraEntries = remember(koin) { koin.getAll<NavEntryContributor>() }
     val taskColors = remember(koin) { koin.getOrNull<TaskColors>() }
+    val taskSync = remember(koin) { koin.getOrNull<TaskSync>() }
     val colorsOfTasks by
         (taskColors?.colors ?: remember { MutableStateFlow<Map<Long, Int>>(emptyMap()) })
             .collectAsState()
@@ -124,6 +125,8 @@ fun GritNavDisplay(
                             entry<TaskList>(metadata = fadeTransitionMetadata()) {
                                 val viewModel = koinViewModel<TasksViewModel>()
                                 val state by viewModel.state.collectAsStateWithLifecycle()
+                                // Changes of the other people who share a task list
+                                LaunchedEffect(Unit) { taskSync?.requestSync() }
 
                                 TasksPage(
                                     state = state,

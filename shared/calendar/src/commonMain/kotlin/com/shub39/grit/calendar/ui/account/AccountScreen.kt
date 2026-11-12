@@ -91,6 +91,8 @@ fun AccountScreen(state: AccountState, viewModel: AccountViewModel, onBack: () -
     val syncToggle by viewModel.syncToggle.collectAsState()
     var confirmStart by remember { mutableStateOf<CollectionEntity?>(null) }
     var confirmStop by remember { mutableStateOf<CollectionEntity?>(null) }
+    var stopTaskList by remember { mutableStateOf<TaskListUi?>(null) }
+    var startCategory by remember { mutableStateOf<TaskCategoryUi?>(null) }
     val askCalendarPermission = rememberCalendarReadPermission { granted ->
         phoneDenied = !granted
         viewModel.onPhonePermission()
@@ -143,6 +145,12 @@ fun AccountScreen(state: AccountState, viewModel: AccountViewModel, onBack: () -
                         onChangePassword = { changePassword = true },
                         onRemove = { confirmRemove = true },
                         onStopSyncing = { confirmStop = it },
+                    )
+                    taskListSection(
+                        state,
+                        viewModel,
+                        onStop = { stopTaskList = it },
+                        onStartCategory = { startCategory = it },
                     )
                 }
                 importSection(onChoose = viewModel::pickIcsFile)
@@ -236,6 +244,28 @@ fun AccountScreen(state: AccountState, viewModel: AccountViewModel, onBack: () -
                 viewModel.startSyncing(calendar.id)
             },
             onDismiss = { confirmStart = null },
+        )
+    }
+    stopTaskList?.let { list ->
+        ConfirmDialog(
+            text = stringResource(Res.string.task_list_stop_confirm, list.name),
+            confirm = stringResource(Res.string.stop_syncing),
+            onConfirm = {
+                stopTaskList = null
+                viewModel.stopSyncingTaskList(list.id)
+            },
+            onDismiss = { stopTaskList = null },
+        )
+    }
+    startCategory?.let { category ->
+        ConfirmDialog(
+            text = stringResource(Res.string.task_category_start_confirm, category.name),
+            confirm = stringResource(Res.string.start_syncing),
+            onConfirm = {
+                startCategory = null
+                viewModel.startSyncingCategory(category)
+            },
+            onDismiss = { startCategory = null },
         )
     }
     confirmStop?.let { calendar ->
@@ -687,6 +717,86 @@ private fun LazyListScope.serverSection(
             modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
         ) {
             Text(stringResource(Res.string.remove_account), color = MaterialTheme.colorScheme.error)
+        }
+    }
+}
+
+/**
+ * Task lists of the server, and the Grit task categories that are on this device only. Each one can
+ * start or stop syncing.
+ */
+private fun LazyListScope.taskListSection(
+    state: AccountState,
+    viewModel: AccountViewModel,
+    onStop: (TaskListUi) -> Unit,
+    onStartCategory: (TaskCategoryUi) -> Unit,
+) {
+    item {
+        Column {
+            SectionTitle(stringResource(Res.string.task_lists))
+            Text(
+                stringResource(Res.string.task_lists_body),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+    items(state.taskLists, key = { "task-list-${it.id}" }) { list ->
+        val synced = list.categoryName != null
+        TaskListRow(
+            name = list.name,
+            notes =
+                listOfNotNull(
+                    if (synced) stringResource(Res.string.task_list_synced, list.categoryName!!)
+                    else stringResource(Res.string.task_list_not_synced),
+                    if (!list.canWrite) stringResource(Res.string.read_only) else null,
+                ),
+            error =
+                list.error?.takeIf { synced }?.let { stringResource(Res.string.sync_error, it) },
+            action =
+                if (synced) stringResource(Res.string.stop_syncing) to { onStop(list) }
+                else
+                    stringResource(Res.string.start_syncing) to
+                        {
+                            viewModel.startSyncingTaskList(list.id)
+                        },
+        )
+    }
+    items(state.localTaskCategories, key = { "task-category-${it.id}" }) { category ->
+        TaskListRow(
+            name = category.name,
+            notes = listOf(stringResource(Res.string.task_category_local)),
+            error = null,
+            action = stringResource(Res.string.start_syncing) to { onStartCategory(category) },
+        )
+    }
+}
+
+@Composable
+private fun TaskListRow(
+    name: String,
+    notes: List<String>,
+    error: String?,
+    action: Pair<String, () -> Unit>,
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Text(name, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                notes.joinToString(" · "),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            error?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            TextButton(onClick = action.second, contentPadding = PaddingValues(0.dp)) {
+                Text(action.first)
+            }
         }
     }
 }

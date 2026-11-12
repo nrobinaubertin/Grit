@@ -127,10 +127,15 @@ interface DavClient {
     suspend fun delete(href: String, condition: WriteCondition): WriteResult
 
     /**
-     * Creates a calendar for events (MKCALENDAR). [url] ends with a slash and does not exist yet.
-     * [color] is ARGB, or null for the server's default.
+     * Creates a calendar for events, or a task list for [ComponentType.VTODO] (MKCALENDAR). [url]
+     * ends with a slash and does not exist yet. [color] is ARGB, or null for the server's default.
      */
-    suspend fun createCalendar(url: String, displayName: String, color: Int?): WriteResult
+    suspend fun createCalendar(
+        url: String,
+        displayName: String,
+        color: Int?,
+        type: ComponentType = ComponentType.VEVENT,
+    ): WriteResult
 
     /** Whether [username] shares the calendar at [url] with anybody, in either direction. */
     suspend fun sharing(url: String, username: String): Sharing
