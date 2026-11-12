@@ -38,7 +38,7 @@ Grit maps the task fields to the to-do as follows:
 | Title | `SUMMARY` |
 | Done | `STATUS:COMPLETED`, with `COMPLETED` and `PERCENT-COMPLETE:100` |
 | Reminder | `DUE` as a local time without a time zone, and a display alarm at that time |
-| Order | `X-APPLE-SORT-ORDER`, which Apple Reminders and other task apps also use |
+| Order | `X-APPLE-SORT-ORDER`, which Apple Reminders and other task apps also use. A to-do without it takes the next place in the order of creation (`CREATED`, else `DTSTAMP`), so every phone shows the same order. |
 | Subtask | `RELATED-TO` with the UID of the parent to-do |
 
 Grit changes only the fields that differ, and it keeps the properties that it does not know, for example priority or notes from another app. A done task keeps its due date on the server, although Grit clears the reminder. A due date without a time becomes a reminder at 09:00. Grit has one level of subtasks: a to-do under a subtask becomes a subtask of the top task.

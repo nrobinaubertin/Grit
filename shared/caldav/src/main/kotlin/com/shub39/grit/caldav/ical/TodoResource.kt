@@ -43,6 +43,7 @@ import net.fortuna.ical4j.model.parameter.Related
 import net.fortuna.ical4j.model.parameter.TzId
 import net.fortuna.ical4j.model.property.Action
 import net.fortuna.ical4j.model.property.Completed
+import net.fortuna.ical4j.model.property.Created
 import net.fortuna.ical4j.model.property.Description
 import net.fortuna.ical4j.model.property.DtStamp
 import net.fortuna.ical4j.model.property.Due
@@ -71,6 +72,8 @@ data class TodoInfo(
     /** X-APPLE-SORT-ORDER, which Apple Reminders and other task apps use for the order. */
     val sortOrder: Long?,
     val lastModified: Instant?,
+    /** CREATED, or DTSTAMP if the to-do has no CREATED. It orders to-dos without [sortOrder]. */
+    val created: Instant? = null,
 )
 
 /** What Grit writes into a to-do. */
@@ -116,6 +119,15 @@ class TodoResource private constructor(private val calendar: Calendar) {
                     .getProperty<LastModified>(Property.LAST_MODIFIED)
                     .map { it.date.toKotlinInstant() }
                     .orElse(null),
+            created =
+                todo
+                    .getProperty<Created>(Property.CREATED)
+                    .map { it.date.toKotlinInstant() }
+                    .orElse(null)
+                    ?: todo
+                        .getProperty<DtStamp>(Property.DTSTAMP)
+                        .map { it.date.toKotlinInstant() }
+                        .orElse(null),
         )
     }
 

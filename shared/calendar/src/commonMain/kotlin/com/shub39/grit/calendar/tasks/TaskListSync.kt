@@ -36,6 +36,7 @@ import java.time.ZoneId
 import java.util.UUID
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Clock
+import kotlin.time.Instant
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
@@ -377,8 +378,14 @@ class TaskListSync(
                 } else row to info
             }
         val byUid = dao.items(list.id).associateBy { it.uid }
+        // To-dos without an order value take the next places in the order of their creation, so
+        // that every phone puts them in the same order, whatever order they arrive in
         val (children, topLevel) =
-            parsed.partition { (_, info) -> info.parentUid != null && info.parentUid in byUid }
+            parsed
+                .sortedWith(
+                    compareBy({ it.second.created ?: Instant.DISTANT_FUTURE }, { it.second.uid })
+                )
+                .partition { (_, info) -> info.parentUid != null && info.parentUid in byUid }
 
         for ((row, info) in topLevel) applyTask(list, categoryId, row, info, pair)
         for ((row, info) in children) {

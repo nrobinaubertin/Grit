@@ -46,7 +46,9 @@ import org.junit.Assume.assumeTrue
 
 /**
  * Task lists sync with `server/radicale` (seed-dev.sh): a Grit category goes to the server, a
- * second phone links it, and two users share `alice/chores`. Skipped unless RADICALE_URL is set.
+ * second phone links it, and two users share a list. Each test makes its own lists, so that it
+ * never touches the lists of the seed, which phones use for manual tests. Skipped unless
+ * RADICALE_URL is set.
  */
 class TaskListSyncIntegrationTest {
     private val baseUrl = System.getenv("RADICALE_URL").orEmpty().trimEnd('/')
@@ -195,29 +197,69 @@ class TaskListSyncIntegrationTest {
         }
 
     @Test
+    fun `to-dos without an order value come in the order of their creation`() = runBlocking {
+        assumeTrue("RADICALE_URL is not set", baseUrl.isNotEmpty())
+        val dav = KtorDavClient(baseUrl, Credentials("alice", "alice"))
+        val url = "$baseUrl/alice/order-${java.util.UUID.randomUUID()}/"
+        try {
+            dav.createCalendar(url, "Order test", null, ComponentType.VTODO)
+            // The names sort the other way round from the creation times
+            for ((name, created) in
+                listOf("a" to "20261110", "b" to "20261105", "c" to "20261101")) {
+                val ics =
+                    "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//test//EN\r\nBEGIN:VTODO\r\n" +
+                        "UID:$name\r\nDTSTAMP:20261111T000000Z\r\n" +
+                        "CREATED:${created}T090000Z\r\nSUMMARY:$name\r\n" +
+                        "END:VTODO\r\nEND:VCALENDAR\r\n"
+                dav.put("$url$name.ics", ics, WriteCondition.MustNotExist)
+            }
+            val phone = device("alice")
+            phone.connect()
+            phone.taskLists.link(phone.list("Order test").id)
+            phone.manager.syncAll()
+            val category = phone.category("Order test")
+            assertEquals(
+                listOf("c", "b", "a"),
+                phone.repo.tasks.value
+                    .filter { it.categoryId == category.id }
+                    .sortedBy { it.index }
+                    .map { it.title },
+            )
+        } finally {
+            dav.delete(url, WriteCondition.None)
+            dav.close()
+        }
+    }
+
+    @Test
     fun `two users share a task list, and the later change wins a conflict`() = runBlocking {
         assumeTrue("RADICALE_URL is not set", baseUrl.isNotEmpty())
-        val chores = "$baseUrl/alice/chores/"
+        // A new list of alice, shared with bob with write access, as seed-dev.sh does
+        val name = "shared-" + java.util.UUID.randomUUID().toString().take(8)
+        val url = "$baseUrl/alice/$name/"
         val dav = KtorDavClient(baseUrl, Credentials("alice", "alice"))
-        // The seed state, also after a phone test on the same server
-        suspend fun reset() {
-            for (item in dav.listEtags(chores, ComponentType.VTODO)) {
-                if (!item.href.endsWith("/bins.ics")) dav.delete(item.href, WriteCondition.None)
-            }
-            dav.put("${chores}bins.ics", SEED_BINS, WriteCondition.None)
-        }
-        reset()
         try {
+            dav.createCalendar(url, "Shared test", null, ComponentType.VTODO)
+            dav.put("${url}bins.ics", BINS, WriteCondition.MustNotExist)
+            sharing(
+                "alice",
+                "create",
+                """{"PathOrToken": "/bob/$name/", "PathMapped": "/alice/$name/", "User": "bob", """ +
+                    """"Permissions": "rw", "Enabled": true, "Hidden": false}""",
+            )
+            for (step in listOf("enable", "unhide")) {
+                sharing("bob", step, """{"PathOrToken": "/bob/$name/"}""")
+            }
             val alice = device("alice")
             val bob = device("bob")
             alice.connect()
             bob.connect()
-            alice.taskLists.link(alice.list("chores").id)
-            bob.taskLists.link(bob.list("chores").id)
+            alice.taskLists.link(alice.list("Shared test").id)
+            bob.taskLists.link(bob.list("Shared test").id)
             alice.manager.syncAll()
             bob.manager.syncAll()
-            val aliceChores = alice.category("chores")
-            val bobChores = bob.category("chores")
+            val aliceChores = alice.category("Shared test")
+            val bobChores = bob.category("Shared test")
             assertEquals(setOf("Take out the bins"), alice.tasks(aliceChores).keys)
             assertEquals(setOf("Take out the bins"), bob.tasks(bobChores).keys)
 
@@ -245,14 +287,33 @@ class TaskListSyncIntegrationTest {
             assertTrue(bob.tasks(bobChores).containsKey("Water the plants (alice)"))
             assertEquals(2, bob.tasks(bobChores).size)
         } finally {
-            reset()
+            runCatching { sharing("alice", "delete", """{"PathOrToken": "/bob/$name/"}""") }
+            dav.delete(url, WriteCondition.None)
             dav.close()
         }
     }
 
+    /** Calls the Radicale sharing API as [user], who has the same password. */
+    private fun sharing(user: String, action: String, json: String) {
+        val request =
+            java.net.http.HttpRequest.newBuilder(java.net.URI("$baseUrl/.sharing/v1/map/$action"))
+                .header("Content-Type", "application/json")
+                .header(
+                    "Authorization",
+                    "Basic " +
+                        java.util.Base64.getEncoder().encodeToString("$user:$user".toByteArray()),
+                )
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(json))
+                .build()
+        val response =
+            java.net.http.HttpClient.newHttpClient()
+                .send(request, java.net.http.HttpResponse.BodyHandlers.ofString())
+        assertTrue(response.statusCode() == 200 && "success" in response.body(), response.body())
+    }
+
     private companion object {
-        /** The to-do that `server/radicale/seed-dev.sh` puts in `alice/chores`. */
-        const val SEED_BINS =
+        /** The first to-do of the shared list. */
+        const val BINS =
             "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Grit//seed//EN\r\nBEGIN:VTODO\r\n" +
                 "UID:bins\r\nDTSTAMP:20260101T000000Z\r\nSUMMARY:Take out the bins\r\n" +
                 "STATUS:NEEDS-ACTION\r\nEND:VTODO\r\nEND:VCALENDAR\r\n"

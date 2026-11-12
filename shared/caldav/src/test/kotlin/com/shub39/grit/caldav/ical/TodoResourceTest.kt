@@ -180,6 +180,16 @@ class TodoResourceTest {
     }
 
     @Test
+    fun `the creation time is CREATED, or DTSTAMP without it`() {
+        val stamp = "UID:a\nDTSTAMP:20261101T000000Z\n"
+        assertEquals(
+            Instant.parse("2026-10-05T08:00:00Z"),
+            info(ics(stamp + "CREATED:20261005T080000Z")).created,
+        )
+        assertEquals(Instant.parse("2026-11-01T00:00:00Z"), info(ics(stamp.trimEnd())).created)
+    }
+
+    @Test
     fun `an event is not a to-do`() {
         val event =
             "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//test//EN\r\nBEGIN:VEVENT\r\nUID:e\r\n" +
