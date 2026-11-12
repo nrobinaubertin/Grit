@@ -41,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -313,6 +314,17 @@ private fun WeekBand(
                                 tint = 0.55f,
                                 bar = 0f,
                                 background = colors.background,
+                                clear =
+                                    painter.clearArea(
+                                        pattern = segment.event.pattern,
+                                        text = segment.event.title,
+                                        sizePx = textSize,
+                                        x = left + inset * 2,
+                                        clipRight = right - inset,
+                                        // Past the bottom edge: the text fills the line
+                                        bottom = y + height + 1f,
+                                        margin = inset,
+                                    ),
                             )
                             painter.draw(
                                 scope = this,
@@ -413,6 +425,7 @@ private fun HourGrid(
                     val titleSize = 11.sp.toPx()
                     val timeSize = 10.sp.toPx()
                     val inset = 1.dp.toPx()
+                    val margin = 2.dp.toPx()
                     val bar = 3.dp.toPx()
                     val corner = CornerRadius(4.dp.toPx())
                     val line = colors.outlineVariant.copy(alpha = 0.5f)
@@ -445,6 +458,47 @@ private fun HourGrid(
                             val top = box.startMinute / 60f * hourHeight + inset
                             val height =
                                 (box.endMinute - box.startMinute) / 60f * hourHeight - 2 * inset
+                            val right = left + width - 2 * inset
+                            val textX = left + bar + 2 * inset
+                            // Short events get a smaller title, the shortest only their color
+                            val eventTitleSize = minOf(titleSize, height / 1.25f)
+                            val showTitle = eventTitleSize >= minTitleSize
+                            val titleBaseline = top + eventTitleSize * 1.05f
+                            val time =
+                                if (height > titleSize * 2.6f) {
+                                    Formatting.time(
+                                        event.begin,
+                                        java.time.ZoneId.systemDefault(),
+                                        is24Hr,
+                                    )
+                                } else null
+                            val timeBaseline = top + titleSize * 1.1f + timeSize * 1.25f
+                            // The lines of the pattern stop around the title and the time
+                            val titleArea =
+                                if (!showTitle) Rect.Zero
+                                else
+                                    painter.clearArea(
+                                        pattern = event.pattern,
+                                        text = event.title,
+                                        sizePx = eventTitleSize,
+                                        x = textX,
+                                        clipRight = right,
+                                        bottom = titleBaseline + eventTitleSize * 0.3f + margin,
+                                        margin = margin,
+                                        bold = true,
+                                    )
+                            val timeArea =
+                                if (time == null) Rect.Zero
+                                else
+                                    painter.clearArea(
+                                        pattern = event.pattern,
+                                        text = time,
+                                        sizePx = timeSize,
+                                        x = textX,
+                                        clipRight = right,
+                                        bottom = timeBaseline + timeSize * 0.3f + margin,
+                                        margin = margin,
+                                    )
                             drawEventBlock(
                                 pattern = event.pattern,
                                 color = color,
@@ -454,33 +508,33 @@ private fun HourGrid(
                                 tint = 0.35f,
                                 bar = bar,
                                 background = colors.background,
+                                // Both areas start at 0: together they reach the further end
+                                clear =
+                                    Rect(
+                                        0f,
+                                        0f,
+                                        maxOf(titleArea.right, timeArea.right),
+                                        maxOf(titleArea.bottom, timeArea.bottom),
+                                    ),
                             )
-                            val right = left + width - 2 * inset
-                            // Short events get a smaller title, the shortest only their color
-                            val eventTitleSize = minOf(titleSize, height / 1.25f)
-                            if (eventTitleSize >= minTitleSize) {
+                            if (showTitle) {
                                 painter.draw(
                                     scope = this,
                                     text = event.title,
-                                    x = left + bar + 2 * inset,
-                                    baseline = top + eventTitleSize * 1.05f,
+                                    x = textX,
+                                    baseline = titleBaseline,
                                     clipRight = right,
                                     color = colors.onSurface,
                                     sizePx = eventTitleSize,
                                     bold = true,
                                 )
                             }
-                            if (height > titleSize * 2.6f) {
+                            if (time != null) {
                                 painter.draw(
                                     scope = this,
-                                    text =
-                                        Formatting.time(
-                                            event.begin,
-                                            java.time.ZoneId.systemDefault(),
-                                            is24Hr,
-                                        ),
-                                    x = left + bar + 2 * inset,
-                                    baseline = top + titleSize * 1.1f + timeSize * 1.25f,
+                                    text = time,
+                                    x = textX,
+                                    baseline = timeBaseline,
                                     clipRight = right,
                                     color = colors.onSurfaceVariant,
                                     sizePx = timeSize,

@@ -39,4 +39,7 @@ internal expect class GridTextPainter() {
         bold: Boolean = false,
         centered: Boolean = false,
     )
+
+    /** The width of [text] on one line, as [draw] draws it. */
+    fun width(text: String, sizePx: Float, bold: Boolean = false): Float
 }

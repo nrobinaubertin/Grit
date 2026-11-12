@@ -64,4 +64,7 @@ internal actual class GridTextPainter {
         canvas.drawString(text, left, baseline, font, paint)
         canvas.restore()
     }
+
+    actual fun width(text: String, sizePx: Float, bold: Boolean): Float =
+        Font(if (bold) this.bold else regular, sizePx).measureTextWidth(text)
 }

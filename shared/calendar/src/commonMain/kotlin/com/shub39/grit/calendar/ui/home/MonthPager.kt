@@ -274,6 +274,7 @@ private fun MonthDrawing(
                                 (segment.endColumn + 1) * cellWidth -
                                     if (segment.continuesAfter) 0f else inset
                             val y = top + segment.lane * lineStep
+                            val textX = left + if (spanning) inset * 2 else bar + inset
                             // The pattern tells the calendar, the color the category
                             drawEventBlock(
                                 pattern = event.pattern,
@@ -284,11 +285,22 @@ private fun MonthDrawing(
                                 tint = if (spanning) 0.55f else 0.18f,
                                 bar = if (spanning) 0f else bar,
                                 background = colors.background,
+                                clear =
+                                    painter.clearArea(
+                                        pattern = event.pattern,
+                                        text = event.title,
+                                        sizePx = lineSize,
+                                        x = textX,
+                                        clipRight = right - inset,
+                                        // Past the bottom edge: the text fills the line
+                                        bottom = y + lineHeight + 1f,
+                                        margin = inset,
+                                    ),
                             )
                             painter.draw(
                                 scope = this,
                                 text = event.title,
-                                x = left + if (spanning) inset * 2 else bar + inset,
+                                x = textX,
                                 baseline = y + lineHeight * 0.75f,
                                 clipRight = right - inset,
                                 color = colors.onSurface,

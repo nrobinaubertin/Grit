@@ -1,5 +1,8 @@
 # Changelog
 
+## 7.10.2
+- The lines of the hatched and cross-hatched patterns stop around event titles and times, so that the text stays readable
+
 ## 7.10.1
 - Events without a category are grey instead of the theme color
 

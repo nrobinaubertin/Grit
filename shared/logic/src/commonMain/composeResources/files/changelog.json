@@ -1,5 +1,11 @@
 [
   {
+    "version": "7.10.2",
+    "changes": [
+      "The lines of the hatched and cross-hatched patterns stop around event titles and times, so that the text stays readable"
+    ]
+  },
+  {
     "version": "7.10.1",
     "changes": [
       "Events without a category are grey instead of the theme color"
@@ -59,14 +65,6 @@
     "version": "7.7.1",
     "changes": [
       "Tasks from other apps without an order keep the order of their creation, on every device"
-    ]
-  },
-  {
-    "version": "7.7.0",
-    "changes": [
-      "Task categories sync with task lists on a CalDAV server, with subtasks, done state, reminders and order",
-      "Two people can share a task list",
-      "Task lists sync when the Tasks tab opens"
     ]
   }
 ]

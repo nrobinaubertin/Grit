@@ -23,7 +23,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
@@ -40,10 +42,39 @@ internal val NoCategoryColor = Color(0xFF808080)
 /** The color to draw an event with: its category color, or [NoCategoryColor]. */
 internal fun eventColor(argb: Int?): Color = argb?.let { Color(it) } ?: NoCategoryColor
 
+/** Whether [this] pattern draws lines over the whole block, so that its text needs a clear area. */
+internal val CalendarPattern.crossesText: Boolean
+    get() = this == CalendarPattern.Hatched || this == CalendarPattern.Crossed
+
+/**
+ * The area of an event block that the lines of [pattern] leave clear, so that the text stays
+ * readable: from the left and top edges of the block to [margin] past the end of [text] drawn from
+ * [x], and down to [bottom]. Text cut at [clipRight] clears the block up to its right edge. The
+ * area starts at 0, past the left and top edges, so that no partly covered row or column of pixels
+ * along an edge shows lines. Empty when the pattern draws no lines over the text.
+ */
+internal fun GridTextPainter.clearArea(
+    pattern: CalendarPattern,
+    text: String,
+    sizePx: Float,
+    x: Float,
+    clipRight: Float,
+    bottom: Float,
+    margin: Float,
+    bold: Boolean = false,
+): Rect {
+    if (!pattern.crossesText || text.isEmpty()) return Rect.Zero
+    val end = x + width(text, sizePx, bold)
+    // One more pixel past the right edge of the block when the text reaches it
+    val right = if (end >= clipRight) clipRight + margin + 1f else end + margin
+    return Rect(0f, 0f, right, bottom)
+}
+
 /**
  * Draws an event block in [color] with [pattern]. [tint] is the alpha of the solid fill; [bar] the
  * width of the side bar of the filled patterns, or 0 for none; [background] covers the grid under
- * the patterns that have no fill.
+ * the patterns that have no fill. The lines of the hatched patterns stay out of [clear], where the
+ * text goes: there the block shows only its light fill.
  */
 internal fun DrawScope.drawEventBlock(
     pattern: CalendarPattern,
@@ -54,6 +85,7 @@ internal fun DrawScope.drawEventBlock(
     tint: Float,
     bar: Float,
     background: Color,
+    clear: Rect = Rect.Zero,
 ) {
     val stroke = 1.5.dp.toPx()
     when (pattern) {
@@ -68,26 +100,29 @@ internal fun DrawScope.drawEventBlock(
             val line = color.copy(alpha = 0.7f)
             val width = 1.2.dp.toPx()
             clipRect(topLeft.x, topLeft.y, topLeft.x + size.width, topLeft.y + size.height) {
-                // Lines at 45 degrees, at the same places in every block so that blocks line up
-                val reach = size.width + size.height
-                var d = -(topLeft.x + topLeft.y) % step - size.height
-                while (d < reach) {
-                    val x = topLeft.x + d
-                    drawLine(
-                        line,
-                        Offset(x, topLeft.y + size.height),
-                        Offset(x + size.height, topLeft.y),
-                        width,
-                    )
-                    if (pattern == CalendarPattern.Crossed) {
+                clipRect(clear.left, clear.top, clear.right, clear.bottom, ClipOp.Difference) {
+                    // Lines at 45 degrees, at the same places in every block so that blocks line
+                    // up
+                    val reach = size.width + size.height
+                    var d = -(topLeft.x + topLeft.y) % step - size.height
+                    while (d < reach) {
+                        val x = topLeft.x + d
                         drawLine(
                             line,
-                            Offset(x, topLeft.y),
-                            Offset(x + size.height, topLeft.y + size.height),
+                            Offset(x, topLeft.y + size.height),
+                            Offset(x + size.height, topLeft.y),
                             width,
                         )
+                        if (pattern == CalendarPattern.Crossed) {
+                            drawLine(
+                                line,
+                                Offset(x, topLeft.y),
+                                Offset(x + size.height, topLeft.y + size.height),
+                                width,
+                            )
+                        }
+                        d += step
                     }
-                    d += step
                 }
             }
             if (bar > 0f) drawRect(color, topLeft, Size(bar, size.height))
