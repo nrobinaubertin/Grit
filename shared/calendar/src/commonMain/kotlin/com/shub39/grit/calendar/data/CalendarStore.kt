@@ -128,6 +128,16 @@ class CalendarStore(private val db: CalendarDatabase) {
         dao.putValue(KeyValueEntity(DEFAULT_VIEW, view.toLong()))
     }
 
+    /** Whether the views show the open tasks that have a date. On by default. */
+    fun tasksVisibleFlow(): Flow<Boolean> =
+        dao.valuesFlow(TASKS_VISIBLE)
+            .map { rows -> rows.firstOrNull { it.key == TASKS_VISIBLE }?.value != 0L }
+            .distinctUntilChanged()
+
+    suspend fun setTasksVisible(visible: Boolean) {
+        dao.putValue(KeyValueEntity(TASKS_VISIBLE, if (visible) 1L else 0L))
+    }
+
     suspend fun createCategory(name: String, color: String) {
         dao.upsertCategory(CategoryEntity(name.trim(), color))
     }
@@ -497,6 +507,7 @@ class CalendarStore(private val db: CalendarDatabase) {
 
         private const val CATEGORIES_INDEXED = "categories_indexed"
         private const val DEFAULT_VIEW = "view.default"
+        private const val TASKS_VISIBLE = "view.tasks"
         private const val WINDOW_START = "window_start"
         private const val WINDOW_END = "window_end"
         private val WINDOW_BEFORE = 92.days

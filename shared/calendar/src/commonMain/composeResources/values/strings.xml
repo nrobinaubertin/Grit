@@ -136,4 +136,7 @@
     <string name="stop_syncing_kept_unknown">“%1$s” stays on the server, because Grit could not check who else uses it. Its events stay on this device, and Grit no longer syncs it.</string>
     <string name="task_color">Color</string>
     <string name="task_no_color">No color</string>
+    <string name="tasks_with_date">Tasks with a date</string>
+    <string name="task">Task</string>
+    <string name="mark_done">Mark as done</string>
 </resources>

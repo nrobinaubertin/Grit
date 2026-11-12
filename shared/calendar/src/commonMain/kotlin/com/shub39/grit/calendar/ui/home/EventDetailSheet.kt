@@ -58,8 +58,13 @@ fun EventDetailSheet(
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     onDeleteOccurrence: () -> Unit,
+    onCompleteTask: () -> Unit,
 ) {
     val event = details.event
+    if (event.taskId != null) {
+        TaskDetailSheet(event, is24Hr, onDismiss, onCompleteTask)
+        return
+    }
     var confirmDelete by remember { mutableStateOf(false) }
 
     GritBottomSheet(onDismissRequest = onDismiss, padding = 24.dp) {
@@ -163,6 +168,50 @@ fun EventDetailSheet(
                 }
             },
         )
+    }
+}
+
+/** A task with a date: its title, its time, its category, and a button to mark it as done. */
+@Composable
+private fun TaskDetailSheet(
+    event: DayEvent,
+    is24Hr: Boolean,
+    onDismiss: () -> Unit,
+    onComplete: () -> Unit,
+) {
+    GritBottomSheet(onDismissRequest = onDismiss, padding = 24.dp) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(
+                text = event.title.removePrefix(TASK_MARK).ifBlank { "—" },
+                style = MaterialTheme.typography.headlineSmall,
+            )
+            val day = Formatting.dayTitle(event.startDay)
+            val time = Formatting.time(event.begin, ZoneId.systemDefault(), is24Hr)
+            Text(text = "$day · $time", style = MaterialTheme.typography.bodyLarge)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier =
+                        Modifier.size(12.dp)
+                            .clip(CircleShape)
+                            .background(
+                                event.color?.let { Color(it) } ?: MaterialTheme.colorScheme.primary
+                            )
+                )
+                Text(
+                    text =
+                        listOfNotNull(stringResource(Res.string.task), event.category)
+                            .joinToString(" · "),
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(start = 8.dp),
+                )
+            }
+            Button(onClick = onComplete, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                Text(stringResource(Res.string.mark_done))
+            }
+        }
     }
 }
 

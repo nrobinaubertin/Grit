@@ -24,8 +24,12 @@ import com.shub39.grit.calendar.data.CalendarSyncManager
 import com.shub39.grit.calendar.data.CategoryColors
 import com.shub39.grit.calendar.data.SyncScheduler
 import com.shub39.grit.calendar.data.db.InstanceRow
+import com.shub39.grit.calendar.tasks.TaskColorStore
 import com.shub39.grit.calendar.ui.Formatting
 import com.shub39.grit.core.interfaces.SettingsDatastore
+import com.shub39.grit.core.tasks.Task
+import com.shub39.grit.core.tasks.TaskRepo
+import com.shub39.grit.core.tasks.TasksStatusHandler
 import java.time.ZoneId
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -40,6 +44,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -51,6 +56,7 @@ import kotlinx.datetime.atStartOfDayIn
 import kotlinx.datetime.minus
 import kotlinx.datetime.plus
 import kotlinx.datetime.toJavaLocalDate
+import kotlinx.datetime.toJavaLocalDateTime
 import kotlinx.datetime.toKotlinLocalDate
 import kotlinx.datetime.toKotlinTimeZone
 import kotlinx.datetime.yearMonth
@@ -83,10 +89,12 @@ data class DayEvent(
     val color: Int?,
     val calendarName: String?,
     val canWrite: Boolean,
+    /** The task that this entry shows, or null for an event. */
+    val taskId: Long? = null,
 ) {
     /** Unique in lists. */
-    val key: Long
-        get() = instanceId
+    val key: String
+        get() = if (taskId != null) "t$taskId" else "e$instanceId"
 }
 
 /** What the event detail sheet shows. */
@@ -100,6 +108,8 @@ data class CalendarFilterItem(
     val name: String,
     val visible: Boolean,
     val local: Boolean,
+    /** The entry for the tasks that have a date, not a calendar. */
+    val tasks: Boolean = false,
 )
 
 /** Events of the months around the shown month: per day, and in lanes per week row. */
@@ -170,6 +180,11 @@ sealed interface CalendarAction {
 
     data class SetCalendarVisible(val id: Long, val visible: Boolean) : CalendarAction
 
+    data class SetTasksVisible(val visible: Boolean) : CalendarAction
+
+    /** Marks the task of a calendar entry as done. */
+    data class CompleteTask(val taskId: Long) : CalendarAction
+
     /** Creates a first calendar on this device, from the empty screen. */
     data class CreateLocalCalendar(val name: String) : CalendarAction
 }
@@ -205,10 +220,31 @@ class CalendarViewModel(
     private val store: CalendarStore,
     private val syncManager: CalendarSyncManager,
     private val syncScheduler: SyncScheduler,
+    taskColors: TaskColorStore,
     @Provided settings: SettingsDatastore,
+    @Provided private val taskRepo: TaskRepo,
+    @Provided private val taskStatus: TasksStatusHandler,
 ) : ViewModel() {
     private val local = MutableStateFlow(LocalState())
     private val firstDayOfWeek = settings.getStartOfTheWeekPref().distinctUntilChanged()
+
+    /** Open tasks that have a reminder, as calendar entries, visible or not. */
+    private val datedTasks: Flow<List<DayEvent>> =
+        combine(taskRepo.getTasksFlow(), taskColors.colors) { categories, colors ->
+                val zone = ZoneId.systemDefault()
+                categories.flatMap { (category, tasks) ->
+                    tasks.mapNotNull { (task) ->
+                        if (task.status || task.reminder == null) null
+                        else task.toDayEvent(category.name, colors[task.id], zone)
+                    }
+                }
+            }
+            .distinctUntilChanged()
+            .flowOn(Dispatchers.Default)
+            // The month, week and agenda flows share one collection of the task table
+            .shareIn(viewModelScope, SharingStarted.WhileSubscribed(5000), replay = 1)
+
+    private val tasksVisible = store.tasksVisibleFlow()
 
     private val monthData: Flow<MonthData> =
         combine(local.map { it.month }.distinctUntilChanged(), firstDayOfWeek, ::Pair)
@@ -282,24 +318,42 @@ class CalendarViewModel(
                 store.defaultViewFlow(),
                 ::Triple,
             ),
-        ) { (is24Hr, firstDay), accounts, collections, (running, pending, defaultView) ->
+            combine(datedTasks.map { it.isNotEmpty() }.distinctUntilChanged(), tasksVisible, ::Pair),
+        ) {
+            (is24Hr, firstDay),
+            accounts,
+            collections,
+            (running, pending, defaultView),
+            (hasTasks, showTasks) ->
             val localAccount = accounts.firstOrNull { it.local }?.id
             val events = collections.filter { it.supportsEvents }
+            val calendars =
+                events.map {
+                    CalendarFilterItem(
+                        id = it.id,
+                        name = it.displayName ?: it.url,
+                        visible = it.visible,
+                        local = it.accountId == localAccount,
+                    )
+                }
             Meta(
                 defaultMode = CalendarMode.entries.getOrElse(defaultView) { CalendarMode.Month },
                 is24Hr = is24Hr,
                 firstDayOfWeek = firstDay,
-                hasCalendars = collections.isNotEmpty(),
+                // Tasks with a date are enough to show the views
+                hasCalendars = collections.isNotEmpty() || hasTasks,
                 hasServer = accounts.any { !it.local },
                 calendars =
-                    events.map {
-                        CalendarFilterItem(
-                            id = it.id,
-                            name = it.displayName ?: it.url,
-                            visible = it.visible,
-                            local = it.accountId == localAccount,
-                        )
-                    },
+                    if (!hasTasks) calendars
+                    else
+                        calendars +
+                            CalendarFilterItem(
+                                id = TASKS_FILTER_ID,
+                                name = "",
+                                visible = showTasks,
+                                local = true,
+                                tasks = true,
+                            ),
                 canCreate = events.any { it.canWrite && it.visible },
                 syncing = running,
                 error =
@@ -381,6 +435,10 @@ class CalendarViewModel(
             is CalendarAction.OpenEvent ->
                 viewModelScope.launch {
                     val event = action.event
+                    if (event.taskId != null) {
+                        local.update { it.copy(details = EventDetailsUi(event, null, null)) }
+                        return@launch
+                    }
                     val stored = store.details(event.eventId) ?: return@launch
                     val details = EventDetailsUi(event, stored.info.description, stored.info.rrule)
                     local.update { it.copy(details = details) }
@@ -398,25 +456,40 @@ class CalendarViewModel(
                 }
             is CalendarAction.SetCalendarVisible ->
                 viewModelScope.launch { syncManager.setVisible(action.id, action.visible) }
+            is CalendarAction.SetTasksVisible ->
+                viewModelScope.launch { store.setTasksVisible(action.visible) }
+            is CalendarAction.CompleteTask ->
+                viewModelScope.launch {
+                    local.update { it.copy(details = null) }
+                    // The same path as the task list: the reminder goes, so the entry goes too
+                    taskRepo.getTaskById(action.taskId)?.let { taskStatus.completeTask(it) }
+                }
             is CalendarAction.CreateLocalCalendar ->
                 viewModelScope.launch { store.createLocalCalendar(action.name) }
         }
     }
 
-    /** Distinct occurrences in [first, last), with repeating events expanded if needed. */
+    /**
+     * Distinct occurrences in [first, last), with repeating events expanded if needed, and the open
+     * tasks with a date in that range.
+     */
     private fun eventsBetween(first: LocalDate, last: LocalDate): Flow<List<DayEvent>> {
         val zone = ZoneId.systemDefault()
         val timeZone = zone.toKotlinTimeZone()
         val from = first.atStartOfDayIn(timeZone).toEpochMilliseconds()
         val to = last.atStartOfDayIn(timeZone).toEpochMilliseconds()
-        return flow {
-                store.ensureWindow(from, to)
-                // All-day instances are stored at midnight UTC, so widen the query by one day
-                emitAll(
-                    store.instances(from - DAY_MS, to + DAY_MS).map { rows ->
-                        rows.map { it.toDayEvent(zone) }
-                    }
-                )
+        val events = flow {
+            store.ensureWindow(from, to)
+            // All-day instances are stored at midnight UTC, so widen the query by one day
+            emitAll(
+                store.instances(from - DAY_MS, to + DAY_MS).map { rows ->
+                    rows.map { it.toDayEvent(zone) }
+                }
+            )
+        }
+        return combine(events, datedTasks, tasksVisible) { events, tasks, visible ->
+                if (!visible || tasks.isEmpty()) events
+                else events + tasks.filter { it.begin in from until to }
             }
             // Converting every instance must not happen on the main thread
             .flowOn(Dispatchers.Default)
@@ -424,6 +497,16 @@ class CalendarViewModel(
 }
 
 private const val AGENDA_PAGE_DAYS = 60
+private const val TASKS_FILTER_ID = -1L
+
+/** The start of the title of a task in the views: an empty check box. */
+internal const val TASK_MARK = "\u2610 "
+
+/**
+ * Length of a task in the week view: a task has a time, but no end. One hour, so that the title
+ * fits in its box on a small screen.
+ */
+private const val TASK_MINUTES = 60
 private const val DAY_MS = 24 * 60 * 60 * 1000L
 
 /** Lanes per day in the month grid, and in the all-day band of the week view. */
@@ -472,6 +555,34 @@ internal fun InstanceRow.toDayEvent(zone: ZoneId): DayEvent {
         color = CategoryColors.argb(categoryColor),
         calendarName = calendarName,
         canWrite = canWrite,
+    )
+}
+
+/** A calendar entry for an open task, at the time of its reminder. */
+internal fun Task.toDayEvent(categoryName: String, color: Int?, zone: ZoneId): DayEvent {
+    val start = reminder!!.toJavaLocalDateTime().atZone(zone)
+    val begin = start.toInstant().toEpochMilli()
+    val day = start.toLocalDate()
+    // A task late in the evening stops at midnight, so that it covers one day only
+    val midnight = day.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
+    return DayEvent(
+        // Negative, so that it never equals the id of an instance
+        instanceId = -id,
+        eventId = 0,
+        title = TASK_MARK + title,
+        location = null,
+        begin = begin,
+        end = minOf(begin + TASK_MINUTES * 60_000L, midnight),
+        allDay = false,
+        startDay = day.toKotlinLocalDate(),
+        endDay = day.toKotlinLocalDate(),
+        originalStart = null,
+        recurring = false,
+        category = categoryName,
+        color = color,
+        calendarName = null,
+        canWrite = false,
+        taskId = id,
     )
 }
 

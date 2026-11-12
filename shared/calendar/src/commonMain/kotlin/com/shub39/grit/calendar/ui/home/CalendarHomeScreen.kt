@@ -181,7 +181,10 @@ fun CalendarHomeScreen(
             calendars = state.calendars,
             onDismiss = { showFilter = false },
             onToggle = { calendar, visible ->
-                onAction(CalendarAction.SetCalendarVisible(calendar.id, visible))
+                onAction(
+                    if (calendar.tasks) CalendarAction.SetTasksVisible(visible)
+                    else CalendarAction.SetCalendarVisible(calendar.id, visible)
+                )
             },
         )
     }
@@ -200,6 +203,9 @@ fun CalendarHomeScreen(
                 details.event.originalStart?.let {
                     onAction(CalendarAction.DeleteOccurrence(details.event.eventId, it))
                 }
+            },
+            onCompleteTask = {
+                details.event.taskId?.let { onAction(CalendarAction.CompleteTask(it)) }
             },
         )
     }
@@ -529,6 +535,8 @@ internal fun EventRow(event: DayEvent, is24Hr: Boolean, onClick: () -> Unit) {
 internal fun timeText(event: DayEvent, is24Hr: Boolean): String {
     if (event.allDay) return stringResource(Res.string.all_day)
     val zone = ZoneId.systemDefault()
+    // A task has a time, but no end
+    if (event.taskId != null) return Formatting.time(event.begin, zone, is24Hr)
     return Formatting.time(event.begin, zone, is24Hr) +
         " – " +
         Formatting.time(event.end, zone, is24Hr)
@@ -558,8 +566,12 @@ private fun CalendarFilterSheet(
             ) {
                 Checkbox(checked = calendar.visible, onCheckedChange = null)
                 Column(modifier = Modifier.padding(start = 8.dp)) {
-                    Text(calendar.name, style = MaterialTheme.typography.bodyLarge)
-                    if (calendar.local) {
+                    Text(
+                        if (calendar.tasks) stringResource(Res.string.tasks_with_date)
+                        else calendar.name,
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                    if (calendar.local && !calendar.tasks) {
                         Text(
                             stringResource(Res.string.on_this_device),
                             style = MaterialTheme.typography.bodySmall,

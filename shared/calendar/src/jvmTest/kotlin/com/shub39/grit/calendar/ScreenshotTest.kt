@@ -49,13 +49,10 @@ import com.shub39.grit.calendar.ui.home.isBandEvent
 import com.shub39.grit.calendar.ui.home.layoutTimed
 import com.shub39.grit.calendar.ui.home.layoutWeek
 import com.shub39.grit.calendar.ui.home.startOfWeek
-import com.shub39.grit.core.interfaces.SettingsDatastore
-import com.shub39.grit.core.settings.Sections
 import java.io.File
 import javax.imageio.ImageIO
 import kotlin.test.Test
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.DayOfWeek
@@ -397,35 +394,5 @@ class ScreenshotTest {
             com.shub39.grit.calendar.ui.account.AccountScreen(state, viewModel, onBack = {})
         }
         db.close()
-    }
-
-    private object FakeSettings : SettingsDatastore {
-        override fun getStartOfTheWeekPref() = flowOf(DayOfWeek.MONDAY)
-
-        override suspend fun setStartOfWeek(day: DayOfWeek) = Unit
-
-        override fun getStartingSectionPref() = flowOf(Sections.Tasks)
-
-        override suspend fun setStartingPage(page: Sections) = Unit
-
-        override fun getIs24Hr() = flowOf(true)
-
-        override suspend fun setIs24Hr(pref: Boolean) = Unit
-
-        override fun getNotificationsFlow() = flowOf(false)
-
-        override suspend fun setNotifications(pref: Boolean) = Unit
-
-        override fun getBiometricLockPref() = flowOf(false)
-
-        override suspend fun setBiometricPref(pref: Boolean) = Unit
-
-        override fun getTaskReorderPref() = flowOf(false)
-
-        override suspend fun setTaskReorderPref(pref: Boolean) = Unit
-
-        override fun getCompactViewPref() = flowOf(false)
-
-        override suspend fun setCompactView(pref: Boolean) = Unit
     }
 }
