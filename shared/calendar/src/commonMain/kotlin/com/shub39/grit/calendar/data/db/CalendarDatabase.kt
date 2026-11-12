@@ -44,6 +44,7 @@ import org.koin.core.annotation.Single
             AutoMigration(from = 1, to = 2),
             AutoMigration(from = 2, to = 3),
             AutoMigration(from = 3, to = 4),
+            AutoMigration(from = 4, to = 5),
         ],
 )
 @ConstructedBy(CalendarDbConstructor::class)
@@ -54,7 +55,7 @@ abstract class CalendarDatabase : RoomDatabase() {
 
     companion object {
         const val DB_NAME = "calendar_database"
-        const val SCHEMA_VERSION = 4
+        const val SCHEMA_VERSION = 5
     }
 }
 

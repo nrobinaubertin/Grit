@@ -84,6 +84,7 @@ class CalendarSyncManager(
                 )
             )
         credentials.save(accountId, password)
+        dao.account(accountId)?.let { reconnectDetached(it, discovery.collections) }
         mergeCollections(accountId, discovery.collections)
         taskLists.merge(accountId, discovery.collections)
         return accountId
@@ -93,12 +94,112 @@ class CalendarSyncManager(
         credentials.save(accountId, password)
     }
 
+    /**
+     * Removes the account and its password. Its calendars stay on this device as calendars that do
+     * not sync, and its task lists stay linked to their categories without syncing. If an account
+     * finds the same calendars or lists later (same paths, even at another server address), they
+     * connect again: what changed on this device uploads, the rest takes the server version.
+     */
     suspend fun removeAccount(accountId: Long) {
         mutex.withLock {
+            for (calendar in dao.collections(accountId)) {
+                // Changes that did not reach the server upload on reconnection: everything edited
+                // since the last sync, or since the oldest change that still waits for upload
+                val oldestPending =
+                    dao.pendingEvents(calendar.id)
+                        .filter { !it.deleted }
+                        .mapNotNull {
+                            runCatching { EventResource.parse(it.ics).info()?.lastModified }
+                                .getOrNull()
+                                ?.toEpochMilliseconds()
+                        }
+                        .minOrNull()
+                val changedSince = listOfNotNull(calendar.lastSync, oldestPending).minOrNull() ?: 1L
+                keepOnDevice(
+                    calendar,
+                    keptServerCopy = true,
+                    changedSince = changedSince.coerceAtLeast(1L),
+                )
+                dao.putValue(KeyValueEntity(DETACHED + calendar.id, 1))
+            }
+            // The task lists lose their account but keep their categories and sync data
             dao.deleteAccount(accountId)
             credentials.delete(accountId)
         }
         reminders.reschedule()
+    }
+
+    /**
+     * Turns a server calendar into a calendar on this device. If [keptServerCopy], the events keep
+     * their server ETags and Grit remembers the server calendar: discovery skips it, and "Start
+     * syncing" or a new account reconnect it. Events edited at or after [changedSince] (epoch
+     * milliseconds) count as changed on this device at reconnection.
+     */
+    private suspend fun keepOnDevice(
+        calendar: CollectionEntity,
+        keptServerCopy: Boolean,
+        changedSince: Long,
+    ) {
+        val local =
+            dao.localAccount()?.id
+                ?: dao.upsertAccount(AccountEntity(baseUrl = "", username = "", local = true))
+        if (keptServerCopy) {
+            dao.putValue(KeyValueEntity(IGNORED + calendar.url.trimEnd('/'), calendar.id))
+            dao.putValue(KeyValueEntity(STOPPED_AT + calendar.id, changedSince))
+        }
+        val url = CalendarStore.LOCAL_URL_PREFIX + UUID.randomUUID() + "/"
+        dao.updateCollection(
+            calendar.copy(
+                accountId = local,
+                url = url,
+                canWrite = true,
+                manual = false,
+                syncEnabled = false,
+                syncToken = null,
+                ctag = null,
+                lastSync = null,
+                lastError = null,
+            )
+        )
+        // A deletion waiting for upload has nothing left to do
+        for (event in dao.pendingEvents(calendar.id)) if (event.deleted) dao.deleteEvent(event.id)
+        for (event in dao.eventsOf(calendar.id)) {
+            dao.updateEvent(
+                event.copy(
+                    href = url + event.href.substringAfterLast('/'),
+                    dirty = false,
+                    // A kept server copy keeps its ETags, for a later reconnection
+                    etag = if (keptServerCopy) event.etag else null,
+                    existsOnServer = keptServerCopy && event.existsOnServer,
+                    syncError = null,
+                )
+            )
+        }
+    }
+
+    /**
+     * Connects the calendars of a removed account again, when [found] has a calendar at the same
+     * path on the server of [account].
+     */
+    private suspend fun reconnectDetached(account: AccountEntity, found: List<CollectionInfo>) {
+        val home = account.homeSetUrl ?: account.principalUrl ?: account.baseUrl
+        for (key in dao.keysWithPrefix(DETACHED)) {
+            val id = key.removePrefix(DETACHED).toLongOrNull() ?: continue
+            val calendar = dao.collection(id)
+            if (calendar == null || dao.isLocalCollection(id) != true) {
+                dao.deleteValue(key)
+                continue
+            }
+            val former = formerServerCalendar(id) ?: continue
+            val info =
+                found.firstOrNull {
+                    it.supportsEvents && ServerPaths.path(it.url) == ServerPaths.path(former)
+                } ?: continue
+            // The former address of the server stays in the ignore list: remove it too
+            dao.keysWithValue(IGNORED, id).forEach { dao.deleteValue(it) }
+            reconnect(calendar, account, home, info)
+            dao.deleteValue(key)
+        }
     }
 
     /** Adds a calendar by its URL, for shares that discovery does not list. */
@@ -154,7 +255,11 @@ class CalendarSyncManager(
                     ?: account.principalUrl
                     ?: throw StartSyncingException("The server did not give a calendar home")
             KtorDavClient(account.baseUrl, Credentials(account.username, password)).use { dav ->
-                val former = formerServerCalendar(collectionId)
+                // The server can have a new address since: look at the same path there
+                val former =
+                    formerServerCalendar(collectionId)?.let {
+                        ServerPaths.rebase(it, account.baseUrl)
+                    }
                 val info = former?.let { dav.collection(it) }?.takeIf { it.supportsEvents }
                 if (info != null) {
                     reconnect(calendar, account, home, info)
@@ -324,45 +429,12 @@ class CalendarSyncManager(
                     sharing == Sharing.Shared -> StopResult.KeptShared
                     else -> StopResult.KeptUnknown
                 }
-            val local =
-                dao.localAccount()?.id
-                    ?: dao.upsertAccount(AccountEntity(baseUrl = "", username = "", local = true))
-            if (!deleted) {
-                // Remember the server calendar: discovery skips it, "Start syncing" reuses it
-                dao.putValue(KeyValueEntity(IGNORED + calendar.url.trimEnd('/'), collectionId))
-                dao.putValue(
-                    KeyValueEntity(STOPPED_AT + collectionId, clock.now().toEpochMilliseconds())
-                )
-            }
-            val url = CalendarStore.LOCAL_URL_PREFIX + UUID.randomUUID() + "/"
-            dao.updateCollection(
-                calendar.copy(
-                    accountId = local,
-                    url = url,
-                    canWrite = true,
-                    manual = false,
-                    syncEnabled = false,
-                    syncToken = null,
-                    ctag = null,
-                    lastSync = null,
-                    lastError = null,
-                )
+            // Remember the server calendar: discovery skips it, "Start syncing" reuses it
+            keepOnDevice(
+                calendar,
+                keptServerCopy = !deleted,
+                changedSince = clock.now().toEpochMilliseconds(),
             )
-            // A deletion waiting for upload has nothing left to do
-            for (event in dao.pendingEvents(collectionId)) if (event.deleted)
-                dao.deleteEvent(event.id)
-            for (event in dao.eventsOf(collectionId)) {
-                dao.updateEvent(
-                    event.copy(
-                        href = url + event.href.substringAfterLast('/'),
-                        dirty = false,
-                        // A kept server copy keeps its ETags, for a later reconnection
-                        etag = if (deleted) null else event.etag,
-                        existsOnServer = !deleted && event.existsOnServer,
-                        syncError = null,
-                    )
-                )
-            }
         }
         reminders.reschedule()
         return result
@@ -430,6 +502,7 @@ class CalendarSyncManager(
             KtorDavClient(account.baseUrl, Credentials(account.username, password)).use { dav ->
                 // Refresh names, colors and access rights, and find new or removed calendars
                 val found = dav.discover(account.baseUrl).collections
+                reconnectDetached(account, found)
                 mergeCollections(account.id, found)
                 taskLists.merge(account.id, found)
                 for (manual in dao.collections(account.id).filter { it.manual }) {
@@ -478,8 +551,10 @@ class CalendarSyncManager(
      */
     private suspend fun mergeCollections(accountId: Long, found: List<CollectionInfo>) {
         // Calendars whose sync the user stopped stay out
-        val ignored = dao.keysWithPrefix(IGNORED).map { it.removePrefix(IGNORED) }.toSet()
-        val events = found.filter { it.supportsEvents && it.url.trimEnd('/') !in ignored }
+        // By path: the same calendar at another address of the server stays out too
+        val ignored =
+            dao.keysWithPrefix(IGNORED).map { ServerPaths.path(it.removePrefix(IGNORED)) }.toSet()
+        val events = found.filter { it.supportsEvents && ServerPaths.path(it.url) !in ignored }
         val existing = dao.collections(accountId)
         for (info in events) {
             val match = existing.firstOrNull { sameUrl(it.url, info.url) }
@@ -531,6 +606,12 @@ class CalendarSyncManager(
 
         /** kv key prefix: when the user stopped syncing a calendar, by calendar id. */
         const val STOPPED_AT = "stopped-at:"
+
+        /**
+         * kv key prefix, by calendar id: a calendar of a removed account. It connects again when an
+         * account finds a calendar at the same path.
+         */
+        const val DETACHED = "detached:"
     }
 }
 

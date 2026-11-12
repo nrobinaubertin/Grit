@@ -75,24 +75,28 @@ import grit.shared.calendar.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.resources.vectorResource
 
-/** Calendars on this device, and the CalDAV account with its calendars. */
+/**
+ * Calendars on this device, calendars of other apps, categories, and the calendars of the CalDAV
+ * server. The server account itself is on the sync server page of the settings ([onOpenSync]).
+ */
 @Composable
-fun AccountScreen(state: AccountState, viewModel: AccountViewModel, onBack: () -> Unit) {
+fun AccountScreen(
+    state: AccountState,
+    viewModel: AccountViewModel,
+    onBack: () -> Unit,
+    onOpenSync: () -> Unit,
+) {
     var newLocal by remember { mutableStateOf(false) }
     var newCategory by remember { mutableStateOf(false) }
     var editCategory by remember { mutableStateOf<CategoryEntity?>(null) }
     var deleteCategory by remember { mutableStateOf<CategoryEntity?>(null) }
     var deleteLocal by remember { mutableStateOf<CollectionEntity?>(null) }
     var addByUrl by remember { mutableStateOf(false) }
-    var confirmRemove by remember { mutableStateOf(false) }
-    var changePassword by remember { mutableStateOf(false) }
     var phoneDenied by remember { mutableStateOf(false) }
     val importUi by viewModel.import.collectAsState()
     val syncToggle by viewModel.syncToggle.collectAsState()
     var confirmStart by remember { mutableStateOf<CollectionEntity?>(null) }
     var confirmStop by remember { mutableStateOf<CollectionEntity?>(null) }
-    var stopTaskList by remember { mutableStateOf<TaskListUi?>(null) }
-    var startCategory by remember { mutableStateOf<TaskCategoryUi?>(null) }
     val askCalendarPermission = rememberCalendarReadPermission { granted ->
         phoneDenied = !granted
         viewModel.onPhonePermission()
@@ -135,24 +139,13 @@ fun AccountScreen(state: AccountState, viewModel: AccountViewModel, onBack: () -
                     onDelete = { deleteCategory = it },
                 )
                 item { SectionTitle(stringResource(Res.string.caldav_server)) }
-                if (state.account == null) {
-                    item { ConnectForm(state.form, viewModel) }
-                } else {
-                    serverSection(
-                        state,
-                        viewModel,
-                        onAddByUrl = { addByUrl = true },
-                        onChangePassword = { changePassword = true },
-                        onRemove = { confirmRemove = true },
-                        onStopSyncing = { confirmStop = it },
-                    )
-                    taskListSection(
-                        state,
-                        viewModel,
-                        onStop = { stopTaskList = it },
-                        onStartCategory = { startCategory = it },
-                    )
-                }
+                item { SyncServerLink(state, onOpenSync) }
+                serverCalendars(
+                    state,
+                    viewModel,
+                    onAddByUrl = { addByUrl = true },
+                    onStopSyncing = { confirmStop = it },
+                )
                 importSection(onChoose = viewModel::pickIcsFile)
             }
         }
@@ -246,28 +239,6 @@ fun AccountScreen(state: AccountState, viewModel: AccountViewModel, onBack: () -
             onDismiss = { confirmStart = null },
         )
     }
-    stopTaskList?.let { list ->
-        ConfirmDialog(
-            text = stringResource(Res.string.task_list_stop_confirm, list.name),
-            confirm = stringResource(Res.string.stop_syncing),
-            onConfirm = {
-                stopTaskList = null
-                viewModel.stopSyncingTaskList(list.id)
-            },
-            onDismiss = { stopTaskList = null },
-        )
-    }
-    startCategory?.let { category ->
-        ConfirmDialog(
-            text = stringResource(Res.string.task_category_start_confirm, category.name),
-            confirm = stringResource(Res.string.start_syncing),
-            onConfirm = {
-                startCategory = null
-                viewModel.startSyncingCategory(category)
-            },
-            onDismiss = { startCategory = null },
-        )
-    }
     confirmStop?.let { calendar ->
         ConfirmDialog(
             text = stringResource(Res.string.stop_syncing_confirm, calendar.displayName.orEmpty()),
@@ -279,60 +250,41 @@ fun AccountScreen(state: AccountState, viewModel: AccountViewModel, onBack: () -
             onDismiss = { confirmStop = null },
         )
     }
-    syncToggle?.let { toggle ->
-        AlertDialog(
-            onDismissRequest = { if (toggle !is SyncToggleUi.Running) viewModel.closeSyncToggle() },
-            text = {
-                when (toggle) {
-                    SyncToggleUi.Running ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                            Text(
-                                stringResource(Res.string.sync_toggle_running),
-                                modifier = Modifier.padding(start = 16.dp),
-                            )
-                        }
-                    is SyncToggleUi.Done -> Text(toggle.message)
-                    is SyncToggleUi.Failed -> Text(toggle.message)
-                }
-            },
-            confirmButton = {
-                if (toggle !is SyncToggleUi.Running) {
-                    TextButton(onClick = viewModel::closeSyncToggle) {
-                        Text(stringResource(Res.string.ok))
-                    }
-                }
-            },
-        )
-    }
+    syncToggle?.let { SyncToggleDialog(it, viewModel) }
     if (addByUrl) AddByUrlDialog(viewModel, onDismiss = { addByUrl = false })
-    if (changePassword) ChangePasswordDialog(viewModel, onDismiss = { changePassword = false })
-    if (confirmRemove) {
-        AlertDialog(
-            onDismissRequest = { confirmRemove = false },
-            title = { Text(stringResource(Res.string.remove_account)) },
-            text = { Text(stringResource(Res.string.remove_account_confirm)) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        confirmRemove = false
-                        viewModel.removeAccount()
+}
+
+/** Progress and result of "Start syncing" or "Stop syncing". */
+@Composable
+internal fun SyncToggleDialog(toggle: SyncToggleUi, viewModel: AccountViewModel) {
+    AlertDialog(
+        onDismissRequest = { if (toggle !is SyncToggleUi.Running) viewModel.closeSyncToggle() },
+        text = {
+            when (toggle) {
+                SyncToggleUi.Running ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                        Text(
+                            stringResource(Res.string.sync_toggle_running),
+                            modifier = Modifier.padding(start = 16.dp),
+                        )
                     }
-                ) {
-                    Text(stringResource(Res.string.remove), color = MaterialTheme.colorScheme.error)
+                is SyncToggleUi.Done -> Text(toggle.message)
+                is SyncToggleUi.Failed -> Text(toggle.message)
+            }
+        },
+        confirmButton = {
+            if (toggle !is SyncToggleUi.Running) {
+                TextButton(onClick = viewModel::closeSyncToggle) {
+                    Text(stringResource(Res.string.ok))
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmRemove = false }) {
-                    Text(stringResource(Res.string.cancel))
-                }
-            },
-        )
-    }
+            }
+        },
+    )
 }
 
 @Composable
-private fun ConfirmDialog(
+internal fun ConfirmDialog(
     text: String,
     confirm: String,
     onConfirm: () -> Unit,
@@ -349,7 +301,7 @@ private fun ConfirmDialog(
 }
 
 @Composable
-private fun SectionTitle(text: String) {
+internal fun SectionTitle(text: String) {
     Text(
         text,
         style = MaterialTheme.typography.titleMedium,
@@ -641,56 +593,14 @@ private fun LazyListScope.categorySection(
     item { TextButton(onClick = onNew) { Text(stringResource(Res.string.new_category)) } }
 }
 
-private fun LazyListScope.serverSection(
+/** The calendars of the CalDAV server, when an account is connected. */
+private fun LazyListScope.serverCalendars(
     state: AccountState,
     viewModel: AccountViewModel,
     onAddByUrl: () -> Unit,
-    onChangePassword: () -> Unit,
-    onRemove: () -> Unit,
     onStopSyncing: (CollectionEntity) -> Unit,
 ) {
-    val account = state.account ?: return
-    item {
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Text(account.username, style = MaterialTheme.typography.titleMedium)
-                Text(account.baseUrl, style = MaterialTheme.typography.bodySmall)
-                Text(
-                    text =
-                        account.lastSync?.let {
-                            stringResource(Res.string.last_sync, Formatting.dateTime(it))
-                        } ?: stringResource(Res.string.never_synced),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                account.lastError?.let {
-                    Text(
-                        stringResource(Res.string.sync_error, it),
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.padding(top = 8.dp),
-                ) {
-                    Button(onClick = viewModel::syncNow, enabled = !state.syncing) {
-                        Text(
-                            stringResource(
-                                if (state.syncing) Res.string.syncing else Res.string.sync_now
-                            )
-                        )
-                    }
-                    OutlinedButton(onClick = onChangePassword) {
-                        Text(stringResource(Res.string.change_password))
-                    }
-                }
-            }
-        }
-    }
+    if (state.account == null) return
     items(state.collections, key = { it.id }) { collection ->
         CalendarRow(
             collection = collection,
@@ -711,12 +621,81 @@ private fun LazyListScope.serverSection(
         )
     }
     item { TextButton(onClick = onAddByUrl) { Text(stringResource(Res.string.add_by_url)) } }
-    item {
-        OutlinedButton(
-            onClick = onRemove,
-            modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+}
+
+/** The connected server, or none, with a way to its settings page. */
+@Composable
+private fun SyncServerLink(state: AccountState, onOpenSync: () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text(stringResource(Res.string.remove_account), color = MaterialTheme.colorScheme.error)
+            val account = state.account
+            Text(
+                if (account == null) stringResource(Res.string.sync_server_none)
+                else stringResource(Res.string.sync_server_of, account.username, account.baseUrl),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            account?.lastError?.let {
+                Text(
+                    stringResource(Res.string.sync_error, it),
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            OutlinedButton(onClick = onOpenSync, modifier = Modifier.padding(top = 4.dp)) {
+                Text(stringResource(Res.string.open_sync_settings))
+            }
+        }
+    }
+}
+
+/** The account of the CalDAV server: who, where, when it last synced, and its actions. */
+@Composable
+internal fun AccountCard(
+    state: AccountState,
+    viewModel: AccountViewModel,
+    onChangePassword: () -> Unit,
+) {
+    val account = state.account ?: return
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(account.username, style = MaterialTheme.typography.titleMedium)
+            Text(account.baseUrl, style = MaterialTheme.typography.bodySmall)
+            Text(
+                text =
+                    account.lastSync?.let {
+                        stringResource(Res.string.last_sync, Formatting.dateTime(it))
+                    } ?: stringResource(Res.string.never_synced),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            account.lastError?.let {
+                Text(
+                    stringResource(Res.string.sync_error, it),
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(top = 8.dp),
+            ) {
+                Button(onClick = viewModel::syncNow, enabled = !state.syncing) {
+                    Text(
+                        stringResource(
+                            if (state.syncing) Res.string.syncing else Res.string.sync_now
+                        )
+                    )
+                }
+                OutlinedButton(onClick = onChangePassword) {
+                    Text(stringResource(Res.string.change_password))
+                }
+            }
         }
     }
 }
@@ -725,7 +704,7 @@ private fun LazyListScope.serverSection(
  * Task lists of the server, and the Grit task categories that are on this device only. Each one can
  * start or stop syncing.
  */
-private fun LazyListScope.taskListSection(
+internal fun LazyListScope.taskListSection(
     state: AccountState,
     viewModel: AccountViewModel,
     onStop: (TaskListUi) -> Unit,
@@ -773,7 +752,7 @@ private fun LazyListScope.taskListSection(
 }
 
 @Composable
-private fun TaskListRow(
+internal fun TaskListRow(
     name: String,
     notes: List<String>,
     error: String?,
@@ -802,7 +781,7 @@ private fun TaskListRow(
 }
 
 @Composable
-private fun ConnectForm(form: AccountForm, viewModel: AccountViewModel) {
+internal fun ConnectForm(form: AccountForm, viewModel: AccountViewModel) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(stringResource(Res.string.connect_body), style = MaterialTheme.typography.bodyMedium)
         OutlinedTextField(
@@ -1070,7 +1049,7 @@ private fun AddByUrlDialog(viewModel: AccountViewModel, onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun ChangePasswordDialog(viewModel: AccountViewModel, onDismiss: () -> Unit) {
+internal fun ChangePasswordDialog(viewModel: AccountViewModel, onDismiss: () -> Unit) {
     var password by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,

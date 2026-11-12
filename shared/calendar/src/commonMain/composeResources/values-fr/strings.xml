@@ -14,7 +14,7 @@
     <string name="today">Aujourd’hui</string>
     <string name="sync_now">Synchroniser</string>
     <string name="syncing">Synchronisation…</string>
-    <string name="accounts">Calendriers et comptes</string>
+    <string name="accounts">Réglages du calendrier</string>
     <string name="new_event">Nouvel événement</string>
     <string name="no_events">Aucun événement</string>
     <string name="all_day">Toute la journée</string>
@@ -36,7 +36,7 @@
     <string name="cancel">Annuler</string>
     <string name="remove">Retirer</string>
     <string name="remove_account">Retirer le compte</string>
-    <string name="remove_account_confirm">Retirer ce compte de Grit ? Ses calendriers sont supprimés de cet appareil. Rien n’est supprimé sur le serveur. Les modifications pas encore synchronisées sont perdues.</string>
+    <string name="remove_account_confirm">Retirer ce compte de Grit ? Ses calendriers et ses listes de tâches restent sur cet appareil et ne se synchronisent plus. Rien n’est supprimé sur le serveur. Si vous connectez de nouveau le même serveur, même à une autre adresse, ils se synchronisent de nouveau, avec les modifications faites entre-temps.</string>
     <string name="change_password">Changer le mot de passe</string>
     <string name="save">Enregistrer</string>
     <string name="last_sync">Dernière synchronisation : %1$s</string>
@@ -147,4 +147,9 @@
     <string name="task_list_stop_confirm">Ne plus synchroniser « %1$s » ? La catégorie de Grit et ses tâches restent sur cet appareil, et la liste reste sur le serveur.</string>
     <string name="task_category_start_confirm">Mettre « %1$s » sur le serveur ? Grit crée une liste de tâches de ce nom sur votre serveur CalDAV et y envoie les tâches de la catégorie.</string>
     <string name="start_syncing_tasks_failed">Grit n’a pas pu mettre cette catégorie sur le serveur : %1$s</string>
+    <string name="sync_server">Serveur de synchronisation</string>
+    <string name="sync_server_body">Grit synchronise vos calendriers et vos listes de tâches avec un serveur CalDAV, par exemple Radicale.</string>
+    <string name="sync_server_none">Aucun serveur de synchronisation n’est connecté.</string>
+    <string name="sync_server_of">%1$s sur %2$s</string>
+    <string name="open_sync_settings">Réglages du serveur de synchronisation</string>
 </resources>

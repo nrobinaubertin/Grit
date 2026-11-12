@@ -232,6 +232,122 @@ class TaskListSyncIntegrationTest {
     }
 
     @Test
+    fun `a removed account keeps its data, and the server at another address connects it again`() =
+        runBlocking {
+            assumeTrue("RADICALE_URL is not set", baseUrl.isNotEmpty())
+            // The same server under another host name, as after a move to a new domain
+            val other = baseUrl.replace("127.0.0.1", "localhost")
+            assumeTrue("RADICALE_URL must use 127.0.0.1", other != baseUrl)
+            val id = java.util.UUID.randomUUID().toString().take(8)
+            val calendarUrl = "$baseUrl/alice/move-$id/"
+            val listUrl = "$baseUrl/alice/move-tasks-$id/"
+            val dav = KtorDavClient(baseUrl, Credentials("alice", "alice"))
+            try {
+                dav.createCalendar(calendarUrl, "Move $id", null)
+                dav.put(
+                    "${calendarUrl}kept.ics",
+                    event("kept", "Kept"),
+                    WriteCondition.MustNotExist,
+                )
+                dav.createCalendar(listUrl, "Move tasks $id", null, ComponentType.VTODO)
+                dav.put("${listUrl}bread.ics", todo("bread", "Bread"), WriteCondition.MustNotExist)
+
+                val phone = device("alice")
+                phone.connect()
+                phone.taskLists.link(phone.list("Move tasks $id").id)
+                phone.manager.syncAll()
+                val dao = phone.db.calendarDao()
+                val calendar =
+                    dao.collections(dao.accounts().single { !it.local }.id).single {
+                        it.displayName == "Move $id"
+                    }
+                val category = phone.category("Move tasks $id")
+                val bread = phone.tasks(category).getValue("Bread")
+
+                // Changes that do not reach the server before the account goes
+                phone.store.createEvent(
+                    calendar.id,
+                    com.shub39.grit.caldav.ical.EventDraft(
+                        summary = "Added before the move",
+                        start =
+                            com.shub39.grit.caldav.ical.IcalTime.Zoned(
+                                LocalDateTime(2026, 12, 3, 10, 0),
+                                "Europe/Paris",
+                            ),
+                        end =
+                            com.shub39.grit.caldav.ical.IcalTime.Zoned(
+                                LocalDateTime(2026, 12, 3, 11, 0),
+                                "Europe/Paris",
+                            ),
+                    ),
+                )
+                phone.repo.upsertTask(bread.copy(title = "Bread and butter"))
+                phone.taskLists.detectAll()
+
+                phone.manager.removeAccount(dao.accounts().single { !it.local }.id)
+                // Everything stays on the phone: the calendar on the device, the list detached
+                assertEquals(true, dao.isLocalCollection(calendar.id))
+                assertEquals(
+                    setOf("Kept", "Added before the move"),
+                    dao.eventsOf(calendar.id).map { it.summary }.toSet(),
+                )
+                assertEquals(setOf("Bread and butter"), phone.tasks(category).keys)
+                assertNull(phone.list("Move tasks $id").accountId)
+
+                // The same server at another address: both connect again, without copies
+                phone.manager.addAccount(
+                    other,
+                    "alice",
+                    "alice",
+                    phone.manager.discover(other, "alice", "alice"),
+                )
+                phone.manager.syncAll()
+                val account = dao.accounts().single { !it.local }
+                val serverCalendars = dao.collections(account.id).filter { "/move-$id/" in it.url }
+                assertEquals(listOf(calendar.id), serverCalendars.map { it.id })
+                assertTrue(
+                    serverCalendars.single().url.startsWith(other),
+                    serverCalendars.toString(),
+                )
+                assertEquals(1, phone.repo.categories.value.count { it.name == "Move tasks $id" })
+                assertEquals(setOf("Bread and butter"), phone.tasks(category).keys)
+                val list = phone.list("Move tasks $id")
+                assertEquals(account.id, list.accountId)
+                assertTrue(list.url.startsWith(other), list.url)
+                assertNull(list.lastError)
+
+                // The changes made before the move are on the server now
+                val events =
+                    dav.multiget(
+                        calendarUrl,
+                        dav.listEtags(calendarUrl, ComponentType.VEVENT).map { it.href },
+                    )
+                assertEquals(2, events.size)
+                assertTrue(events.any { "SUMMARY:Added before the move" in it.ics!! })
+                val todos =
+                    dav.multiget(
+                        listUrl,
+                        dav.listEtags(listUrl, ComponentType.VTODO).map { it.href },
+                    )
+                assertEquals(1, todos.size)
+                assertTrue("SUMMARY:Bread and butter" in todos.single().ics!!, todos.single().ics)
+            } finally {
+                dav.delete(calendarUrl, WriteCondition.None)
+                dav.delete(listUrl, WriteCondition.None)
+                dav.close()
+            }
+        }
+
+    private fun event(uid: String, summary: String) =
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//test//EN\r\nBEGIN:VEVENT\r\nUID:$uid\r\n" +
+            "DTSTAMP:20261101T000000Z\r\nDTSTART:20261205T080000Z\r\nDTEND:20261205T090000Z\r\n" +
+            "SUMMARY:$summary\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+
+    private fun todo(uid: String, summary: String) =
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//test//EN\r\nBEGIN:VTODO\r\nUID:$uid\r\n" +
+            "DTSTAMP:20261101T000000Z\r\nSUMMARY:$summary\r\nEND:VTODO\r\nEND:VCALENDAR\r\n"
+
+    @Test
     fun `two users share a task list, and the later change wins a conflict`() = runBlocking {
         assumeTrue("RADICALE_URL is not set", baseUrl.isNotEmpty())
         // A new list of alice, shared with bob with write access, as seed-dev.sh does

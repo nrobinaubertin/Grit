@@ -51,7 +51,11 @@ data object Backup : Routes
 
 data object LookAndFeel : Routes
 
-private val SETTINGS_ROUTES = listOf(About, Backup, Changelog, LookAndFeel, SettingsHome)
+/** The CalDAV server for calendars and task lists. The calendar module draws its page. */
+data object SyncSettings : Routes
+
+private val SETTINGS_ROUTES =
+    listOf(About, Backup, Changelog, LookAndFeel, SettingsHome, SyncSettings)
 private val HABIT_ROUTES =
     listOf(HabitAnalytics, HabitsList, OverallAnalytics, Calendar, CalendarHeatMap)
 

@@ -166,8 +166,10 @@ class AccountViewModel(
                 lists,
                 categories ->
                 val names = categories.associate { it.id to it.name }
+                // Lists of a removed account wait for their server: their categories are local
+                val attached = lists.filter { it.accountId != null }
                 val ui =
-                    lists.map {
+                    attached.map {
                         TaskListUi(
                             id = it.id,
                             name = it.displayName ?: it.url.trimEnd('/').substringAfterLast('/'),
@@ -176,7 +178,7 @@ class AccountViewModel(
                             error = it.lastError,
                         )
                     }
-                val synced = lists.mapNotNull { it.categoryId }.toSet()
+                val synced = attached.mapNotNull { it.categoryId }.toSet()
                 ui to
                     categories
                         .filter { it.id !in synced }

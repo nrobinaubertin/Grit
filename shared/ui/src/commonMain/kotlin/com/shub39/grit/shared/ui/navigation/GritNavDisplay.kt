@@ -270,6 +270,7 @@ private fun EntryProviderScope<Routes>.settingsScreens(
             onAction = viewModel::onAction,
             onNavigateToLookAndFeel = { topLevelBackStack.add(LookAndFeel) },
             onNavigateToBackup = { topLevelBackStack.add(Backup) },
+            onNavigateToSync = { topLevelBackStack.add(SyncSettings) },
             onNavigateToPaywall = { topLevelBackStack.add(Paywall) },
             onNavigateToChangelog = { topLevelBackStack.add(Changelog) },
             onNavigateToAppInfo = { topLevelBackStack.add(About) },

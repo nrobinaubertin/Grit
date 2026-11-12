@@ -1,5 +1,65 @@
 # Changelog
 
+## 7.8.0
+- The sync server is in the settings: Settings > Sync server holds the CalDAV account and the task lists
+- Removing the account keeps its calendars and task lists on this device, and they stop syncing
+- Connecting the same server again, even at a new address, syncs them again with the changes made meanwhile
+- The calendar settings screen links to the sync server page
+
+## 7.7.5
+- The tasks widget follows the setting "Reorder tasks when marked as completed"
+
+## 7.7.4
+- About shows the app and its license only, with a link to this version's source code
+
+## 7.7.3
+- Settings and About show the version of this build
+
+## 7.7.2
+- The status bar and the navigation bar follow the app theme, also when it differs from the system theme
+
+## 7.7.1
+- Tasks from other apps without an order keep the order of their creation, on every device
+
+## 7.7.0
+- Task categories sync with task lists on a CalDAV server, with subtasks, done state, reminders and order
+- Two people can share a task list
+- Task lists sync when the Tasks tab opens
+
+## 7.6.0
+- Open tasks with a reminder show in the calendar, and can be marked as done there
+
+## 7.5.0
+- Tasks can have a color
+- Choose the start screen in the settings: Tasks, Habits or Calendar
+- Removed the Grit Plus block
+
+## 7.4.0
+- Stop syncing deletes a calendar from the server when nobody else uses it
+- Start syncing reuses a server calendar that was kept
+
+## 7.3.0
+- Start or stop syncing each calendar
+
+## 7.2.2
+- Fixed the version in backup files and the quotes in texts
+
+## 7.2.1
+- Fixed a crash when the app opened on the calendar
+
+## 7.2.0
+- Scheduled backups: daily, weekly or monthly, into a folder of your choice
+
+## 7.1.0
+- Import the calendars of other apps on the phone
+
+## 7.0.0
+- Calendar tab that syncs with a CalDAV server such as Radicale, without another sync app
+- Month, week and agenda views, categories with colors, and reminders
+- Calendars that stay on this device
+- Import of .ics files, and calendars in the backup file
+- French translation
+
 ## 6.4.1
 - Fixed random crashes
 - Updates Translations

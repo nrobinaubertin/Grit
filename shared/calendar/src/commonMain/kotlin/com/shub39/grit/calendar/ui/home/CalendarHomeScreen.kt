@@ -88,6 +88,7 @@ fun CalendarHomeScreen(
     state: CalendarUiState,
     onAction: (CalendarAction) -> Unit,
     onOpenAccount: () -> Unit,
+    onOpenSync: () -> Unit,
     onCreateEvent: (LocalDate, Int?) -> Unit,
     onEditEvent: (Long) -> Unit,
     modifier: Modifier = Modifier,
@@ -116,7 +117,7 @@ fun CalendarHomeScreen(
                             onCreateLocal = {
                                 onAction(CalendarAction.CreateLocalCalendar(defaultName))
                             },
-                            onConnect = onOpenAccount,
+                            onConnect = onOpenSync,
                         )
                     // Pull to refresh only makes sense with a server
                     state.hasServer ->

@@ -43,6 +43,7 @@ import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.navigation3.runtime.EntryProviderScope
 import com.shub39.grit.calendar.ui.account.AccountScreen
 import com.shub39.grit.calendar.ui.account.AccountViewModel
+import com.shub39.grit.calendar.ui.account.SyncScreen
 import com.shub39.grit.calendar.ui.editor.EventEditorScreen
 import com.shub39.grit.calendar.ui.editor.EventEditorViewModel
 import com.shub39.grit.calendar.ui.home.CalendarAction
@@ -51,7 +52,9 @@ import com.shub39.grit.calendar.ui.home.CalendarViewModel
 import com.shub39.grit.shared.ui.navigation.CalendarHome
 import com.shub39.grit.shared.ui.navigation.NavEntryContributor
 import com.shub39.grit.shared.ui.navigation.Routes
+import com.shub39.grit.shared.ui.navigation.SyncSettings
 import com.shub39.grit.shared.ui.navigation.TopLevelBackStack
+import com.shub39.grit.shared.ui.navigation.TwoPaneScene
 import com.shub39.grit.shared.ui.navigation.fadeTransitionMetadata
 import com.shub39.grit.shared.ui.navigation.horizontalTransitionMetadata
 import org.koin.compose.viewmodel.koinViewModel
@@ -116,6 +119,7 @@ class CalendarNavEntries : NavEntryContributor {
                     state = state,
                     onAction = onAction,
                     onOpenAccount = { backStack.backStack.add(CalendarAccount) },
+                    onOpenSync = { backStack.add(SyncSettings) },
                     onCreateEvent = { date, hour ->
                         editor = EventEditor(date = date, hour = hour)
                     },
@@ -128,7 +132,19 @@ class CalendarNavEntries : NavEntryContributor {
         entry<CalendarAccount>(metadata = horizontalTransitionMetadata(TRANSITION_MS)) {
             val viewModel = koinViewModel<AccountViewModel>()
             val state by viewModel.state.collectAsStateWithLifecycle()
-            AccountScreen(state = state, viewModel = viewModel, onBack = { backStack.removeLast() })
+            AccountScreen(
+                state = state,
+                viewModel = viewModel,
+                onBack = { backStack.removeLast() },
+                onOpenSync = { backStack.add(SyncSettings) },
+            )
+        }
+
+        // The sync server page of the global settings
+        entry<SyncSettings>(metadata = TwoPaneScene.twoPane() + horizontalTransitionMetadata()) {
+            val viewModel = koinViewModel<AccountViewModel>()
+            val state by viewModel.state.collectAsStateWithLifecycle()
+            SyncScreen(state = state, viewModel = viewModel, onBack = { backStack.removeLast() })
         }
     }
 }

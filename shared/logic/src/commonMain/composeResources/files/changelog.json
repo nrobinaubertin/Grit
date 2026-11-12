@@ -1,86 +1,70 @@
 [
   {
-    "version": "6.4.1",
+    "version": "7.8.0",
     "changes": [
-      "Fixed random crashes",
-      "Updates Translations"
+      "The sync server is in the settings: Settings > Sync server holds the CalDAV account and the task lists",
+      "Removing the account keeps its calendars and task lists on this device, and they stop syncing",
+      "Connecting the same server again, even at a new address, syncs them again with the changes made meanwhile",
+      "The calendar settings screen links to the sync server page"
     ]
   },
   {
-    "version": "6.4.0",
+    "version": "7.7.5",
     "changes": [
-      "Widgets now support Subtasks, Habit Categories and Measurable Habits",
-      "Task and Habit widgets use the same connected lists and spacing as the app",
-      "Completing a task from a widget completes its subtasks and clears their reminders",
-      "Added progress for Measurable Habits in the Habits widget",
-      "Fixed widgets logging Measurable Habits with the wrong value",
-      "Removed outdated widget preview images"
+      "The tasks widget follows the setting \"Reorder tasks when marked as completed\""
     ]
   },
   {
-    "version": "6.3.0",
+    "version": "7.7.4",
     "changes": [
-      "Added Habit Categories, create categories and assign habits to them",
-      "Habits list now has \"Today\" and \"All\" filters based on the days a habit is scheduled",
-      "Overall Analytics can now be grouped by category",
-      "Updated Translations"
+      "About shows the app and its license only, with a link to this version's source code"
     ]
   },
   {
-    "version": "6.2.2",
+    "version": "7.7.3",
     "changes": [
-      "Fixed Light mode Splashscreen",
-      "Updated App Icon",
-      "Miscellaneous UI fixes",
-      "Updated Translations"
+      "Settings and About show the version of this build"
     ]
   },
   {
-    "version": "6.2.0",
+    "version": "7.7.2",
     "changes": [
-      "Added Measurable Habits",
-      "Added new Target Analytic for Measurable Habits",
-      "Updated Translations"
+      "The status bar and the navigation bar follow the app theme, also when it differs from the system theme"
     ]
   },
   {
-    "version": "6.1.1",
+    "version": "7.7.1",
     "changes": [
-      "Added Subtasks. Add them by long pressing on a task",
-      "Miscellaneous UI improvements and Fixes",
-      "Updated app icon",
-      "Updated Translations"
+      "Tasks from other apps without an order keep the order of their creation, on every device"
     ]
   },
   {
-    "version": "6.0.91",
+    "version": "7.7.0",
     "changes": [
-      "Updated Translations",
-      "Removed Changelog Sheet",
-      "Miscellaneous Fixes and Improvements"
+      "Task categories sync with task lists on a CalDAV server, with subtasks, done state, reminders and order",
+      "Two people can share a task list",
+      "Task lists sync when the Tasks tab opens"
     ]
   },
   {
-    "version": "6.0.7",
+    "version": "7.6.0",
     "changes": [
-      "Updated Translations"
+      "Open tasks with a reminder show in the calendar, and can be marked as done there"
     ]
   },
   {
-    "version": "6.0.6",
+    "version": "7.5.0",
     "changes": [
-      "Updated Translations",
-      "Fixed UI bug where add button covers reorder handle in tasks list #307"
+      "Tasks can have a color",
+      "Choose the start screen in the settings: Tasks, Habits or Calendar",
+      "Removed the Grit Plus block"
     ]
   },
   {
-    "version": "6.0.5",
+    "version": "7.4.0",
     "changes": [
-      "Updated Translations",
-      "Fixed bugs with reminders",
-      "Fixed App crashing in private spaces #305",
-      "Fixed categories sheet disappearing after enabling dark mode #304",
-      "Miscellaneous UI updates"
+      "Stop syncing deletes a calendar from the server when nobody else uses it",
+      "Start syncing reuses a server calendar that was kept"
     ]
   }
 ]

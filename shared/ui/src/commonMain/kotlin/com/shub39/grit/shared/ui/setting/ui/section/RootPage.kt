@@ -71,6 +71,7 @@ fun RootPage(
     onAction: (SettingsAction) -> Unit,
     onNavigateToLookAndFeel: () -> Unit,
     onNavigateToBackup: () -> Unit,
+    onNavigateToSync: () -> Unit,
     onNavigateToPaywall: () -> Unit,
     onNavigateToChangelog: () -> Unit,
     onNavigateToAppInfo: () -> Unit,
@@ -271,6 +272,31 @@ fun RootPage(
                             colors = listItemColors(),
                         )
 
+                        // The CalDAV server of the calendar and task lists (calendar fork)
+                        ListItem(
+                            modifier =
+                                Modifier.clip(middleItemShape()).clickable { onNavigateToSync() },
+                            colors = listItemColors(),
+                            headlineContent = {
+                                Text(text = stringResource(Res.string.sync_server))
+                            },
+                            supportingContent = {
+                                Text(text = stringResource(Res.string.sync_server_desc))
+                            },
+                            trailingContent = {
+                                Icon(
+                                    imageVector = vectorResource(Res.drawable.arrow_forward),
+                                    contentDescription = "Navigate",
+                                )
+                            },
+                            leadingContent = {
+                                Icon(
+                                    imageVector = vectorResource(Res.drawable.sync),
+                                    contentDescription = null,
+                                )
+                            },
+                        )
+
                         ListItem(
                             modifier =
                                 Modifier.clip(endItemShape()).clickable { onNavigateToBackup() },
@@ -364,6 +390,7 @@ private fun Preview() {
         onAction = {},
         onNavigateToLookAndFeel = {},
         onNavigateToBackup = {},
+        onNavigateToSync = {},
         onNavigateToPaywall = {},
         onNavigateToChangelog = {},
         onNavigateToAppInfo = {},

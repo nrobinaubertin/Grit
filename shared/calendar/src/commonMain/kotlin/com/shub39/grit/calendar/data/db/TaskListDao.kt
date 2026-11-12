@@ -35,6 +35,10 @@ interface TaskListDao {
     @Query("SELECT * FROM task_list WHERE categoryId IS NOT NULL ORDER BY id")
     suspend fun linkedLists(): List<TaskListEntity>
 
+    /** Lists whose account the user removed. */
+    @Query("SELECT * FROM task_list WHERE accountId IS NULL ORDER BY id")
+    suspend fun detachedLists(): List<TaskListEntity>
+
     @Query("SELECT * FROM task_list WHERE id = :id") suspend fun list(id: Long): TaskListEntity?
 
     @Insert suspend fun insertList(list: TaskListEntity): Long

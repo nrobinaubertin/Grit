@@ -14,9 +14,11 @@ This fork of Grit adds a Calendar tab that syncs with a CalDAV server, for examp
 - It imports `.ics` files, for example the export of another calendar app, into a calendar that you choose. A series stays together with its changed occurrences. An event that is already in the calendar (same UID) is updated, so a second import of the same file adds nothing.
 - It shows the open tasks that have a reminder, at the time of the reminder, with a check box before the title and in the color of the task. The task stays in the Grit task list: the calendar does not copy it and does not sync it. Select the task to see its category, or to mark it as done. A task that is done loses its reminder, so it leaves the calendar. "Tasks with a date" in the "Shown calendars" list hides the tasks. Subtasks do not show.
 - It syncs Grit task categories with task lists on the server (see "Task lists" below).
+- It keeps the CalDAV account in the global settings, under Settings > Sync server. The "Calendar settings" screen of the Calendar tab shows the server calendars and links to that page.
+- If you remove the account, its calendars stay on this device as calendars that do not sync, and its task lists stay with their categories but stop syncing. Changes that did not reach the server stay too. If you connect the same server again, even at another address, Grit finds the same calendars and lists by their path on the server (for example `/niels/family/`) and syncs them again: the changes made on this device meanwhile upload, the rest takes the server version. This is how you move to a new server address.
 - It shows reminders as Android notifications. The Grit setting that pauses notifications also pauses calendar reminders.
 - It syncs at these times: every 30 minutes, 5 seconds after a local change, at the opening of the Calendar tab or of the Tasks tab, and on pull-to-refresh.
-- On Android, it imports the calendars of other apps, for example Google Calendar or DAVx5. These apps keep their calendars in the Android calendar provider (the shared calendar storage of the phone). Choose a calendar under "Calendars from other apps" on the "Calendars and accounts" screen, then a new calendar on this device or one of your calendars as the target. The events become normal Grit events, with their changed occurrences and their reminders. Grit does not see later changes in the other app: import the calendar again to update it.
+- On Android, it imports the calendars of other apps, for example Google Calendar or DAVx5. These apps keep their calendars in the Android calendar provider (the shared calendar storage of the phone). Choose a calendar under "Calendars from other apps" on the "Calendar settings" screen, then a new calendar on this device or one of your calendars as the target. The events become normal Grit events, with their changed occurrences and their reminders. Grit does not see later changes in the other app: import the calendar again to update it.
 
 The desktop app syncs while it runs and has no reminders, like the upstream desktop app.
 
@@ -24,7 +26,7 @@ The desktop app syncs while it runs and has no reminders, like the upstream desk
 
 A task list is a collection of to-dos (iCalendar VTODO) on the CalDAV server. One Grit task category syncs with one task list. Two people who share a list on the server see the same tasks. Other task apps, for example Tasks.org or Thunderbird, can use the same lists.
 
-The "Task lists" section of the "Calendars and accounts" screen shows the task lists of the server and the Grit categories that are on this device only:
+The "Task lists" section of Settings > Sync server shows the task lists of the server and the Grit categories that are on this device only:
 
 - "Start syncing" on a server list syncs it with the Grit category of the same name. If no such category exists, Grit creates it. The first sync pairs the Grit tasks and the server to-dos that have the same title, so a list that you sync again gets no copies.
 - "Start syncing" on a Grit category creates a task list with that name on the server and uploads the tasks.
@@ -82,7 +84,7 @@ The calendar module adds its screens through `NavEntryContributor`, which Koin p
   - the calendars on this device, with the full iCalendar text of every event
   - the CalDAV account, and the switches of its calendars
 
-  The password is not in the file. After a restore, enter it again on the "Calendars and accounts" screen, and the server calendars download again. A restore adds and replaces events, but it never deletes them. Changes that are not uploaded yet are not in the file, so sync before you make a backup.
+  The password is not in the file. After a restore, enter it again under Settings > Sync server, and the server calendars download again. A restore adds and replaces events, but it never deletes them. Changes that are not uploaded yet are not in the file, so sync before you make a backup.
 - If you import a calendar of another app, Grit asks for the calendar read permission first. Grit copies only the calendars that you import, and it never writes to the calendar provider.
 
 ## Tests

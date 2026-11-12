@@ -22,6 +22,7 @@ import com.shub39.grit.caldav.DavClient
 import com.shub39.grit.caldav.ical.TodoResource
 import com.shub39.grit.caldav.sync.CollectionSyncer
 import com.shub39.grit.calendar.data.CalendarStore
+import com.shub39.grit.calendar.data.ServerPaths
 import com.shub39.grit.calendar.data.db.CalendarDatabase
 import com.shub39.grit.calendar.data.db.ConflictEntity
 import com.shub39.grit.calendar.data.db.TaskItemEntity
@@ -114,15 +115,21 @@ class TaskListSync(
 
     /**
      * Adds the task lists that discovery found and updates the known ones. A list that the server
-     * no longer has stops syncing; its Grit category and tasks stay.
+     * no longer has stops syncing; its Grit category and tasks stay. A list of a removed account at
+     * the same path connects again, with its sync data: the address of the server can change.
      */
     suspend fun merge(accountId: Long, found: List<CollectionInfo>) =
         mutex.withLock {
             val tasks = found.filter { it.supportsTasks }
             val existing = dao.lists(accountId)
+            val detached = dao.detachedLists().toMutableList()
             for (info in tasks) {
                 val match = existing.firstOrNull { sameUrl(it.url, info.url) }
-                if (match == null) {
+                val former = detached.firstOrNull { samePath(it.url, info.url) }
+                if (match == null && former != null) {
+                    detached -= former
+                    reattach(former, accountId, info)
+                } else if (match == null) {
                     dao.insertList(
                         TaskListEntity(
                             accountId = accountId,
@@ -142,9 +149,37 @@ class TaskListSync(
             }
         }
 
+    /**
+     * Gives a list of a removed account to [accountId]. Its tasks, their UIDs and ETags stay, so
+     * the next sync uploads what changed in Grit meanwhile and downloads the rest. The sync token
+     * of the former address is not reused: the next sync compares every ETag.
+     */
+    private suspend fun reattach(list: TaskListEntity, accountId: Long, info: CollectionInfo) {
+        val url = info.url.trimEnd('/') + "/"
+        dao.updateList(
+            list.copy(
+                accountId = accountId,
+                url = url,
+                displayName = info.displayName ?: list.displayName,
+                canWrite = info.canWrite,
+                syncToken = null,
+                lastError = null,
+            )
+        )
+        for (item in dao.items(list.id)) {
+            dao.updateItem(item.copy(href = url + item.href.substringAfterLast('/')))
+        }
+    }
+
+    /** Forgets the list of a removed account that [categoryId] synced with. */
+    private suspend fun dropDetached(categoryId: Long) {
+        for (list in dao.detachedLists()) if (list.categoryId == categoryId) dao.deleteList(list.id)
+    }
+
     /** Adds a list that Grit just created on the server for [categoryId]. */
     suspend fun addCreated(accountId: Long, url: String, name: String, categoryId: Long): Long =
         mutex.withLock {
+            dropDetached(categoryId)
             dao.insertList(
                 TaskListEntity(
                     accountId = accountId,
@@ -165,13 +200,19 @@ class TaskListSync(
     suspend fun link(listId: Long, categoryId: Long? = null) =
         mutex.withLock {
             val list = dao.list(listId) ?: return@withLock
-            val linked = dao.linkedLists().mapNotNull { it.categoryId }.toSet()
+            // A category whose account was removed is free for a list of the new account
+            val linked =
+                dao.linkedLists()
+                    .filter { it.accountId != null }
+                    .mapNotNull { it.categoryId }
+                    .toSet()
             val target =
                 categoryId
                     ?: findOrCreateCategory(
                         list.displayName ?: list.url.trimEnd('/').substringAfterLast('/'),
                         linked,
                     )
+            dropDetached(target)
             dao.deleteItems(list.id)
             dao.updateList(
                 list.copy(categoryId = target, paired = false, syncToken = null, lastError = null)
@@ -548,6 +589,8 @@ class TaskListSync(
     }
 
     private fun sameUrl(a: String, b: String) = a.trimEnd('/') == b.trimEnd('/')
+
+    private fun samePath(a: String, b: String) = ServerPaths.path(a) == ServerPaths.path(b)
 
     companion object {
         private const val SEPARATOR = "\u001F"

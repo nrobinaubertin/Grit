@@ -23,7 +23,9 @@ import androidx.room3.PrimaryKey
 
 /**
  * A task list on the CalDAV server: a collection that holds to-dos (VTODO). It syncs with the Grit
- * task category [categoryId], or it does not sync if [categoryId] is null.
+ * task category [categoryId], or it does not sync if [categoryId] is null. When the user removes
+ * the account, [accountId] becomes null: the list keeps its link and its sync data, and connects
+ * again when an account finds a list at the same path.
  */
 @Entity(
     tableName = "task_list",
@@ -33,14 +35,15 @@ import androidx.room3.PrimaryKey
                 entity = AccountEntity::class,
                 parentColumns = ["id"],
                 childColumns = ["accountId"],
-                onDelete = ForeignKey.CASCADE,
+                onDelete = ForeignKey.SET_NULL,
             )
         ],
     indices = [Index(value = ["accountId", "url"], unique = true)],
 )
 data class TaskListEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val accountId: Long,
+    /** Null after the user removed the account: the list does not sync. */
+    val accountId: Long?,
     val url: String,
     val displayName: String? = null,
     /** The server allows writes (`DAV:write-content`). */

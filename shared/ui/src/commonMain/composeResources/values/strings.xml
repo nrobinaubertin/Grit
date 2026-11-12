@@ -105,4 +105,6 @@
     <string name="targets">Targets</string>
     <string name="start_screen">Start screen</string>
     <string name="start_screen_desc">The screen that Grit shows when it opens.</string>
+    <string name="sync_server">Sync server</string>
+    <string name="sync_server_desc">Calendars and task lists on a CalDAV server</string>
 </resources>

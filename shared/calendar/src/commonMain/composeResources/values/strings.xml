@@ -14,7 +14,7 @@
     <string name="today">Today</string>
     <string name="sync_now">Sync now</string>
     <string name="syncing">Syncing…</string>
-    <string name="accounts">Calendars and accounts</string>
+    <string name="accounts">Calendar settings</string>
     <string name="new_event">New event</string>
     <string name="no_events">No events</string>
     <string name="all_day">All day</string>
@@ -36,7 +36,7 @@
     <string name="cancel">Cancel</string>
     <string name="remove">Remove</string>
     <string name="remove_account">Remove account</string>
-    <string name="remove_account_confirm">Remove this account from Grit? Its calendars are deleted from this device. Nothing is deleted on the server. Changes that are not synced yet are lost.</string>
+    <string name="remove_account_confirm">Remove this account from Grit? Its calendars and task lists stay on this device and stop syncing. Nothing is deleted on the server. If you connect the same server again, even at another address, they sync again, with the changes made meanwhile.</string>
     <string name="change_password">Change password</string>
     <string name="save">Save</string>
     <string name="last_sync">Last sync: %1$s</string>
@@ -147,4 +147,9 @@
     <string name="task_list_stop_confirm">Stop syncing “%1$s”? The Grit category and its tasks stay on this device, and the list stays on the server.</string>
     <string name="task_category_start_confirm">Put “%1$s” on the server? Grit creates a task list with this name on your CalDAV server and uploads the tasks of the category.</string>
     <string name="start_syncing_tasks_failed">Grit could not put this category on the server: %1$s</string>
+    <string name="sync_server">Sync server</string>
+    <string name="sync_server_body">Grit syncs your calendars and task lists with a CalDAV server, for example Radicale.</string>
+    <string name="sync_server_none">No sync server is connected.</string>
+    <string name="sync_server_of">%1$s on %2$s</string>
+    <string name="open_sync_settings">Sync server settings</string>
 </resources>

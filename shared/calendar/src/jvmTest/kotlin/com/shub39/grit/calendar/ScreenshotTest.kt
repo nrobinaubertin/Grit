@@ -201,18 +201,19 @@ class ScreenshotTest {
         }
 
     @Test
-    fun month() = shoot("calendar-month") { CalendarHomeScreen(sample, {}, {}, { _, _ -> }, {}) }
+    fun month() =
+        shoot("calendar-month") { CalendarHomeScreen(sample, {}, {}, {}, { _, _ -> }, {}) }
 
     @Test
     fun week() =
         shoot("calendar-week") {
-            CalendarHomeScreen(sample.copy(mode = CalendarMode.Week), {}, {}, { _, _ -> }, {})
+            CalendarHomeScreen(sample.copy(mode = CalendarMode.Week), {}, {}, {}, { _, _ -> }, {})
         }
 
     @Test
     fun agenda() =
         shoot("calendar-agenda") {
-            CalendarHomeScreen(sample.copy(mode = CalendarMode.Agenda), {}, {}, { _, _ -> }, {})
+            CalendarHomeScreen(sample.copy(mode = CalendarMode.Agenda), {}, {}, {}, { _, _ -> }, {})
         }
 
     @Test
@@ -220,6 +221,7 @@ class ScreenshotTest {
         shoot("calendar-empty") {
             CalendarHomeScreen(
                 sample.copy(hasCalendars = false, canCreate = false),
+                {},
                 {},
                 {},
                 { _, _ -> },
@@ -239,6 +241,7 @@ class ScreenshotTest {
                             rrule = "FREQ=WEEKLY",
                         )
                 ),
+                {},
                 {},
                 {},
                 { _, _ -> },
@@ -377,7 +380,12 @@ class ScreenshotTest {
             },
         ) {
             val state by viewModel.state.collectAsState()
-            com.shub39.grit.calendar.ui.account.AccountScreen(state, viewModel, onBack = {})
+            com.shub39.grit.calendar.ui.account.AccountScreen(
+                state,
+                viewModel,
+                onBack = {},
+                onOpenSync = {},
+            )
         }
         db.close()
     }
@@ -424,7 +432,12 @@ class ScreenshotTest {
             ready = { viewModel.state.value.localCalendars.size == 1 },
         ) {
             val state by viewModel.state.collectAsState()
-            com.shub39.grit.calendar.ui.account.AccountScreen(state, viewModel, onBack = {})
+            com.shub39.grit.calendar.ui.account.AccountScreen(
+                state,
+                viewModel,
+                onBack = {},
+                onOpenSync = {},
+            )
         }
         db.close()
     }
