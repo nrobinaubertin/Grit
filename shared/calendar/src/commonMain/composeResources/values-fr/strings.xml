@@ -162,4 +162,14 @@
     <string name="export_failed">Grit n’a pas pu exporter ce calendrier : %1$s</string>
     <string name="sync_calendars">Calendriers</string>
     <string name="sync_calendars_body">Les calendriers du serveur se synchronisent avec cet appareil. « Ne plus synchroniser » garde un calendrier sur cet appareil uniquement. Un calendrier de cet appareil peut commencer à se synchroniser.</string>
+    <string name="calendar_patterns">Motifs des calendriers</string>
+    <string name="calendar_patterns_body">Chaque calendrier a son propre motif dans les vues, pour distinguer les calendriers. La couleur d’un événement montre sa catégorie.</string>
+    <string name="choose_pattern">Motif de « %1$s »</string>
+    <string name="pattern_solid">Plein</string>
+    <string name="pattern_outline">Contour</string>
+    <string name="pattern_hatched">Hachuré</string>
+    <string name="pattern_dashed">Tirets</string>
+    <string name="pattern_dotted">Pointillés</string>
+    <string name="pattern_crossed">Quadrillé</string>
+    <string name="tasks_chip">Tâches</string>
 </resources>

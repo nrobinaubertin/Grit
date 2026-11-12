@@ -64,6 +64,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import com.shub39.grit.calendar.data.CalendarPattern
 import com.shub39.grit.calendar.data.CategoryColors
 import com.shub39.grit.calendar.data.PhoneCalendar
 import com.shub39.grit.calendar.data.db.CategoryEntity
@@ -72,6 +73,7 @@ import com.shub39.grit.calendar.data.db.CollectionEntity
 import com.shub39.grit.calendar.ui.Formatting
 import com.shub39.grit.calendar.ui.LightSelector
 import com.shub39.grit.calendar.ui.LightTopBar
+import com.shub39.grit.calendar.ui.home.PatternSwatch
 import grit.shared.calendar.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.resources.vectorResource
@@ -96,6 +98,7 @@ fun AccountScreen(
     val importUi by viewModel.import.collectAsState()
     val syncToggle by viewModel.syncToggle.collectAsState()
     val exportResult by viewModel.export.collectAsState()
+    var pickPattern by remember { mutableStateOf<CollectionEntity?>(null) }
     val askCalendarPermission = rememberCalendarReadPermission { granted ->
         phoneDenied = !granted
         viewModel.onPhonePermission()
@@ -121,6 +124,7 @@ fun AccountScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 displaySection(state, viewModel)
+                patternSection(state, onPick = { pickPattern = it })
                 localSection(
                     state,
                     viewModel,
@@ -224,6 +228,115 @@ fun AccountScreen(
     importUi?.let { ImportDialog(it, state, viewModel) }
     syncToggle?.let { SyncToggleDialog(it, viewModel) }
     exportResult?.let { ExportDialog(it, onDismiss = viewModel::closeExport) }
+    pickPattern?.let { calendar ->
+        PatternDialog(
+            name = calendar.displayName ?: calendar.url,
+            current = state.patterns[calendar.id] ?: CalendarPattern.Solid,
+            onPick = {
+                viewModel.setPattern(calendar.id, it)
+                pickPattern = null
+            },
+            onDismiss = { pickPattern = null },
+        )
+    }
+}
+
+/** The pattern of each calendar: the views tell calendars apart by it, and categories by color. */
+private fun LazyListScope.patternSection(state: AccountState, onPick: (CollectionEntity) -> Unit) {
+    val calendars = (state.collections + state.localCalendars).filter { it.supportsEvents }
+    if (calendars.isEmpty()) return
+    item {
+        Column {
+            SectionTitle(stringResource(Res.string.calendar_patterns))
+            Text(
+                stringResource(Res.string.calendar_patterns_body),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+    items(calendars, key = { "pattern-${it.id}" }) { calendar ->
+        val pattern = state.patterns[calendar.id] ?: CalendarPattern.Solid
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier =
+                    Modifier.fillMaxWidth()
+                        .clickable { onPick(calendar) }
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+            ) {
+                PatternSwatch(
+                    pattern,
+                    MaterialTheme.colorScheme.onSurfaceVariant,
+                    width = 28.dp,
+                    height = 18.dp,
+                )
+                Text(
+                    calendar.displayName ?: calendar.url,
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.weight(1f).padding(start = 12.dp),
+                )
+                Text(
+                    patternName(pattern),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun patternName(pattern: CalendarPattern): String =
+    stringResource(
+        when (pattern) {
+            CalendarPattern.Solid -> Res.string.pattern_solid
+            CalendarPattern.Outline -> Res.string.pattern_outline
+            CalendarPattern.Hatched -> Res.string.pattern_hatched
+            CalendarPattern.Dashed -> Res.string.pattern_dashed
+            CalendarPattern.Dotted -> Res.string.pattern_dotted
+            CalendarPattern.Crossed -> Res.string.pattern_crossed
+        }
+    )
+
+@Composable
+private fun PatternDialog(
+    name: String,
+    current: CalendarPattern,
+    onPick: (CalendarPattern) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(Res.string.choose_pattern, name)) },
+        text = {
+            Column {
+                for (pattern in CalendarPattern.entries) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier =
+                            Modifier.fillMaxWidth()
+                                .clip(MaterialTheme.shapes.small)
+                                .clickable { onPick(pattern) }
+                                .padding(vertical = 4.dp),
+                    ) {
+                        RadioButton(selected = pattern == current, onClick = null)
+                        PatternSwatch(
+                            pattern,
+                            MaterialTheme.colorScheme.onSurfaceVariant,
+                            Modifier.padding(horizontal = 12.dp),
+                            width = 32.dp,
+                            height = 20.dp,
+                        )
+                        Text(patternName(pattern), style = MaterialTheme.typography.bodyLarge)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(Res.string.cancel)) }
+        },
+    )
 }
 
 /** The result of an .ics export. */

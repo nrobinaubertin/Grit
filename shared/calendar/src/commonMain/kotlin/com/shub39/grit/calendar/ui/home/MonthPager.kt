@@ -275,13 +275,17 @@ private fun MonthDrawing(
                                 (segment.endColumn + 1) * cellWidth -
                                     if (segment.continuesAfter) 0f else inset
                             val y = top + segment.lane * lineStep
-                            drawRoundRect(
-                                color = color.copy(alpha = if (spanning) 0.55f else 0.18f),
+                            // The pattern tells the calendar, the color the category
+                            drawEventBlock(
+                                pattern = event.pattern,
+                                color = color,
                                 topLeft = Offset(left, y),
                                 size = Size(right - left, lineHeight),
-                                cornerRadius = corner,
+                                corner = corner,
+                                tint = if (spanning) 0.55f else 0.18f,
+                                bar = if (spanning) 0f else bar,
+                                background = colors.background,
                             )
-                            if (!spanning) drawRect(color, Offset(left, y), Size(bar, lineHeight))
                             painter.draw(
                                 scope = this,
                                 text = event.title,

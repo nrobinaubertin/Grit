@@ -305,11 +305,15 @@ private fun WeekBand(
                                 gutter + (segment.endColumn + 1) * columnWidth -
                                     if (segment.continuesAfter) 0f else inset
                             val y = 2.dp.toPx() + segment.lane * step
-                            drawRoundRect(
-                                color.copy(alpha = 0.55f),
-                                Offset(left, y),
-                                Size(right - left, height),
-                                corner,
+                            drawEventBlock(
+                                pattern = segment.event.pattern,
+                                color = color,
+                                topLeft = Offset(left, y),
+                                size = Size(right - left, height),
+                                corner = corner,
+                                tint = 0.55f,
+                                bar = 0f,
+                                background = colors.background,
                             )
                             painter.draw(
                                 scope = this,
@@ -442,13 +446,16 @@ private fun HourGrid(
                             val top = box.startMinute / 60f * hourHeight + inset
                             val height =
                                 (box.endMinute - box.startMinute) / 60f * hourHeight - 2 * inset
-                            drawRoundRect(
-                                color.copy(alpha = 0.35f),
-                                Offset(left, top),
-                                Size(width - 2 * inset, height),
-                                corner,
+                            drawEventBlock(
+                                pattern = event.pattern,
+                                color = color,
+                                topLeft = Offset(left, top),
+                                size = Size(width - 2 * inset, height),
+                                corner = corner,
+                                tint = 0.35f,
+                                bar = bar,
+                                background = colors.background,
                             )
-                            drawRect(color, Offset(left, top), Size(bar, height))
                             val right = left + width - 2 * inset
                             // Short events get a smaller title, the shortest only their color
                             val eventTitleSize = minOf(titleSize, height / 1.25f)

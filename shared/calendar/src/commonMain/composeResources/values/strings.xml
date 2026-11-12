@@ -162,4 +162,14 @@
     <string name="export_failed">Grit could not export this calendar: %1$s</string>
     <string name="sync_calendars">Calendars</string>
     <string name="sync_calendars_body">The calendars of the server sync with this device. “Stop syncing” keeps a calendar on this device only. A calendar of this device can start syncing.</string>
+    <string name="calendar_patterns">Calendar patterns</string>
+    <string name="calendar_patterns_body">Each calendar has its own pattern in the views, so that you can tell calendars apart. The color of an event shows its category.</string>
+    <string name="choose_pattern">Pattern of “%1$s”</string>
+    <string name="pattern_solid">Solid</string>
+    <string name="pattern_outline">Outline</string>
+    <string name="pattern_hatched">Hatched</string>
+    <string name="pattern_dashed">Dashed</string>
+    <string name="pattern_dotted">Dotted</string>
+    <string name="pattern_crossed">Cross-hatched</string>
+    <string name="tasks_chip">Tasks</string>
 </resources>

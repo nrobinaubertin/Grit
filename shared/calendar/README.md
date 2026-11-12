@@ -5,6 +5,7 @@ This fork of Grit adds a Calendar tab that syncs with a CalDAV server, for examp
 ## What it does
 
 - It shows a month grid with the events of the selected day, a week view with hours, and an agenda list.
+- It tells calendars apart by a pattern, because the color of an event is the color of its category. Each calendar has one of six patterns: solid, outline, hatched, dashed, dotted or cross-hatched. A new calendar gets the next pattern; "Calendar patterns" in the calendar settings changes it. A row of chips under the view selector shows each calendar with its pattern, and a tap shows or hides the calendar. The last chip does the same for the tasks with a date.
 - It keeps calendars on the device only, without a server. These calendars never sync. A hidden local account holds them, so they use the same storage, editor and reminders as synced calendars.
 - It creates, edits and deletes events on calendars that you can write to. A repeating event is edited as a whole series. One occurrence can be deleted on its own.
 - It shows read-only calendars without edit actions. If the server does not give the `DAV:write-content` privilege, the calendar is read-only.

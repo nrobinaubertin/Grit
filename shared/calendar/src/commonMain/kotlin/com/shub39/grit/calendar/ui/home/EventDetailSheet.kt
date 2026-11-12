@@ -76,16 +76,23 @@ fun EventDetailSheet(
 
             Text(text = dateLine(event, is24Hr), style = MaterialTheme.typography.bodyLarge)
 
-            Text(
-                text =
-                    listOfNotNull(
-                            event.calendarName,
-                            if (!event.canWrite) stringResource(Res.string.read_only) else null,
-                        )
-                        .joinToString(" · "),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                PatternSwatch(
+                    event.pattern,
+                    event.color?.let { Color(it) } ?: MaterialTheme.colorScheme.primary,
+                    Modifier.padding(end = 8.dp),
+                )
+                Text(
+                    text =
+                        listOfNotNull(
+                                event.calendarName,
+                                if (!event.canWrite) stringResource(Res.string.read_only) else null,
+                            )
+                            .joinToString(" · "),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
 
             event.category?.let { category ->
                 Row(verticalAlignment = Alignment.CenterVertically) {

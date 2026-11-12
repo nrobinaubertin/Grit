@@ -1,5 +1,13 @@
 [
   {
+    "version": "7.10.0",
+    "changes": [
+      "Each calendar has a pattern in the views (solid, outline, hatched, dashed, dotted or cross-hatched), so calendars differ while colors show categories",
+      "A row of calendar chips under the views shows or hides each calendar and the tasks, and shows their patterns",
+      "Choose the pattern of each calendar in the calendar settings"
+    ]
+  },
+  {
     "version": "7.9.0",
     "changes": [
       "Settings > Sync server also holds the calendars of the server: show them, stop syncing, export them, add one by URL, or start syncing a calendar of this device",
@@ -59,14 +67,6 @@
     "version": "7.6.0",
     "changes": [
       "Open tasks with a reminder show in the calendar, and can be marked as done there"
-    ]
-  },
-  {
-    "version": "7.5.0",
-    "changes": [
-      "Tasks can have a color",
-      "Choose the start screen in the settings: Tasks, Habits or Calendar",
-      "Removed the Grit Plus block"
     ]
   }
 ]

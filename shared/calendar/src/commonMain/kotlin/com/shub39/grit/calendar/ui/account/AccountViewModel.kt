@@ -21,6 +21,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.shub39.grit.caldav.AuthenticationException
 import com.shub39.grit.caldav.ical.EventResource
+import com.shub39.grit.calendar.data.CalendarPattern
 import com.shub39.grit.calendar.data.CalendarStore
 import com.shub39.grit.calendar.data.CalendarSyncManager
 import com.shub39.grit.calendar.data.PhoneCalendar
@@ -87,6 +88,8 @@ data class AccountState(
     val categories: List<CategoryEntity> = emptyList(),
     /** The calendars that hold events of each category, by category name. */
     val categoryUses: Map<String, List<CategoryUse>> = emptyMap(),
+    /** The pattern of each calendar, by calendar id. */
+    val patterns: Map<Long, CalendarPattern> = emptyMap(),
     /** False on desktop, which has no calendars of other apps. */
     val phoneSupported: Boolean = false,
     /** True if Grit may read the calendars of other apps, to import them. */
@@ -200,13 +203,13 @@ class AccountViewModel(
     val state: StateFlow<AccountState> =
         combine(
                 store.accountsFlow(),
-                store.collectionsFlow(),
+                combine(store.collectionsFlow(), store.patternsFlow(), ::Pair),
                 combine(store.categoriesFlow(), store.categoryUsesFlow(), ::Pair),
                 combine(syncManager.running, form, store.defaultViewFlow(), ::Triple),
                 combine(phoneTick.flatMapLatest { phone.calendars() }, tasks, ::Pair),
             ) {
                 accounts,
-                collections,
+                (collections, patterns),
                 (categories, categoryUses),
                 (running, form, defaultView),
                 (phoneCalendars, tasks) ->
@@ -218,6 +221,7 @@ class AccountViewModel(
                     localCalendars = collections.filter { it.accountId == local?.id },
                     categories = categories,
                     categoryUses = categoryUses,
+                    patterns = patterns,
                     phoneSupported = phone.supported,
                     phonePermission = phone.hasPermission(),
                     phoneCalendars = phoneCalendars,
@@ -504,6 +508,10 @@ class AccountViewModel(
                     getString(Res.string.export_failed, e.message ?: e::class.simpleName.orEmpty())
                 }
         }
+    }
+
+    fun setPattern(collectionId: Long, pattern: CalendarPattern) {
+        viewModelScope.launch { store.setPattern(collectionId, pattern) }
     }
 
     fun closeExport() {

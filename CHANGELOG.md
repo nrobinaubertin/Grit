@@ -1,5 +1,10 @@
 # Changelog
 
+## 7.10.0
+- Each calendar has a pattern in the views (solid, outline, hatched, dashed, dotted or cross-hatched), so calendars differ while colors show categories
+- A row of calendar chips under the views shows or hides each calendar and the tasks, and shows their patterns
+- Choose the pattern of each calendar in the calendar settings
+
 ## 7.9.0
 - Settings > Sync server also holds the calendars of the server: show them, stop syncing, export them, add one by URL, or start syncing a calendar of this device
 - The calendar settings keep the calendars of this device, the categories and the import

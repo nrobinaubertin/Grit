@@ -43,6 +43,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import org.koin.core.annotation.Single
@@ -128,6 +129,34 @@ class CalendarStore(private val db: CalendarDatabase) {
 
     suspend fun setDefaultView(view: Int) {
         dao.putValue(KeyValueEntity(DEFAULT_VIEW, view.toLong()))
+    }
+
+    /**
+     * The pattern of each calendar of events, by calendar id. A calendar without a chosen pattern
+     * gets one by its place among the calendars, so that the first ones all differ.
+     */
+    fun patternsFlow(): Flow<Map<Long, CalendarPattern>> =
+        combine(dao.collectionsFlow(), dao.valuesFlow(PATTERN)) { collections, rows ->
+                val chosen =
+                    rows
+                        .mapNotNull { row ->
+                            row.key.removePrefix(PATTERN).toLongOrNull()?.let { it to row.value }
+                        }
+                        .toMap()
+                val all = CalendarPattern.entries
+                collections
+                    .filter { it.supportsEvents }
+                    .sortedBy { it.id }
+                    .mapIndexed { index, calendar ->
+                        val ordinal = chosen[calendar.id]?.toInt() ?: (index % all.size)
+                        calendar.id to (all.getOrNull(ordinal) ?: CalendarPattern.Solid)
+                    }
+                    .toMap()
+            }
+            .distinctUntilChanged()
+
+    suspend fun setPattern(collectionId: Long, pattern: CalendarPattern) {
+        dao.putValue(KeyValueEntity(PATTERN + collectionId, pattern.ordinal.toLong()))
     }
 
     /** Whether the views show the open tasks that have a date. On by default. */
@@ -548,6 +577,8 @@ class CalendarStore(private val db: CalendarDatabase) {
         private const val CATEGORIES_INDEXED = "categories_indexed"
         private const val DEFAULT_VIEW = "view.default"
         private const val TASKS_VISIBLE = "view.tasks"
+        /** kv key prefix, followed by the calendar id. The value is a [CalendarPattern] ordinal. */
+        private const val PATTERN = "calendar-pattern:"
         private const val WINDOW_START = "window_start"
         private const val WINDOW_END = "window_end"
         private val WINDOW_BEFORE = 92.days

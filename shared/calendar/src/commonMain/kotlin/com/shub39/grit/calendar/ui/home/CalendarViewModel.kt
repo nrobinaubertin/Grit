@@ -19,6 +19,7 @@ package com.shub39.grit.calendar.ui.home
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.shub39.grit.calendar.data.CalendarPattern
 import com.shub39.grit.calendar.data.CalendarStore
 import com.shub39.grit.calendar.data.CalendarSyncManager
 import com.shub39.grit.calendar.data.CategoryColors
@@ -91,6 +92,8 @@ data class DayEvent(
     val canWrite: Boolean,
     /** The task that this entry shows, or null for an event. */
     val taskId: Long? = null,
+    /** The pattern of the event's calendar; tasks are solid. */
+    val pattern: CalendarPattern = CalendarPattern.Solid,
 ) {
     /** Unique in lists. */
     val key: String
@@ -110,6 +113,7 @@ data class CalendarFilterItem(
     val local: Boolean,
     /** The entry for the tasks that have a date, not a calendar. */
     val tasks: Boolean = false,
+    val pattern: CalendarPattern = CalendarPattern.Solid,
 )
 
 /** Events of the months around the shown month: per day, and in lanes per week row. */
@@ -318,13 +322,18 @@ class CalendarViewModel(
                 store.defaultViewFlow(),
                 ::Triple,
             ),
-            combine(datedTasks.map { it.isNotEmpty() }.distinctUntilChanged(), tasksVisible, ::Pair),
+            combine(
+                datedTasks.map { it.isNotEmpty() }.distinctUntilChanged(),
+                tasksVisible,
+                store.patternsFlow(),
+                ::Triple,
+            ),
         ) {
             (is24Hr, firstDay),
             accounts,
             collections,
             (running, pending, defaultView),
-            (hasTasks, showTasks) ->
+            (hasTasks, showTasks, patterns) ->
             val localAccount = accounts.firstOrNull { it.local }?.id
             val events = collections.filter { it.supportsEvents }
             val calendars =
@@ -334,6 +343,7 @@ class CalendarViewModel(
                         name = it.displayName ?: it.url,
                         visible = it.visible,
                         local = it.accountId == localAccount,
+                        pattern = patterns[it.id] ?: CalendarPattern.Solid,
                     )
                 }
             Meta(
@@ -482,8 +492,10 @@ class CalendarViewModel(
             store.ensureWindow(from, to)
             // All-day instances are stored at midnight UTC, so widen the query by one day
             emitAll(
-                store.instances(from - DAY_MS, to + DAY_MS).map { rows ->
-                    rows.map { it.toDayEvent(zone) }
+                combine(store.instances(from - DAY_MS, to + DAY_MS), store.patternsFlow()) {
+                    rows,
+                    patterns ->
+                    rows.map { it.toDayEvent(zone, patterns[it.collectionId]) }
                 }
             )
         }
@@ -537,7 +549,7 @@ private fun coveredDays(
         java.time.Instant.ofEpochMilli(lastMoment).atZone(zone).toLocalDate()
 }
 
-internal fun InstanceRow.toDayEvent(zone: ZoneId): DayEvent {
+internal fun InstanceRow.toDayEvent(zone: ZoneId, pattern: CalendarPattern? = null): DayEvent {
     val (startDay, endDay) = coveredDays(begin, end, allDay, zone)
     return DayEvent(
         instanceId = id,
@@ -555,6 +567,7 @@ internal fun InstanceRow.toDayEvent(zone: ZoneId): DayEvent {
         color = CategoryColors.argb(categoryColor),
         calendarName = calendarName,
         canWrite = canWrite,
+        pattern = pattern ?: CalendarPattern.Solid,
     )
 }
 

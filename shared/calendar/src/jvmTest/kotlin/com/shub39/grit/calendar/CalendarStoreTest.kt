@@ -126,6 +126,44 @@ class CalendarStoreTest {
         assertTrue("SUMMARY:Run" in file && "SUMMARY:Swim" !in file, file)
     }
 
+    @Test
+    fun `calendars get different patterns by order, and keep a chosen one`() = runBlocking {
+        val first = collection()
+        val account = dao.accounts().single().id
+        val second =
+            dao.insertCollection(
+                CollectionEntity(
+                    accountId = account,
+                    url = "https://dav/u/two/",
+                    displayName = "Two",
+                )
+            )
+        val tasksOnly =
+            dao.insertCollection(
+                CollectionEntity(
+                    accountId = account,
+                    url = "https://dav/u/todo/",
+                    supportsEvents = false,
+                    supportsTasks = true,
+                )
+            )
+        val defaults = store.patternsFlow().first()
+        assertEquals(
+            mapOf(
+                first to com.shub39.grit.calendar.data.CalendarPattern.Solid,
+                second to com.shub39.grit.calendar.data.CalendarPattern.Outline,
+            ),
+            defaults,
+        )
+        assertFalse(tasksOnly in defaults)
+
+        store.setPattern(first, com.shub39.grit.calendar.data.CalendarPattern.Crossed)
+        assertEquals(
+            com.shub39.grit.calendar.data.CalendarPattern.Crossed,
+            store.patternsFlow().first().getValue(first),
+        )
+    }
+
     private fun ics(uid: String, body: String) =
         "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:test\r\nBEGIN:VEVENT\r\nUID:$uid\r\n" +
             "DTSTAMP:20260101T000000Z\r\n" +

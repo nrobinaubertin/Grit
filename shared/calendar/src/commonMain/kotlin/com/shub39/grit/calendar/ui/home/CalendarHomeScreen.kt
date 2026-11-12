@@ -23,6 +23,7 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -40,9 +41,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
-import androidx.compose.material3.Checkbox
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -63,6 +65,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.Layout
@@ -73,7 +76,6 @@ import androidx.compose.ui.unit.dp
 import com.shub39.grit.calendar.ui.Formatting
 import com.shub39.grit.calendar.ui.LightSelector
 import com.shub39.grit.calendar.ui.LightTopBar
-import com.shub39.grit.shared.ui.components.GritBottomSheet
 import grit.shared.calendar.generated.resources.*
 import java.time.ZoneId
 import kotlinx.datetime.LocalDate
@@ -94,7 +96,6 @@ fun CalendarHomeScreen(
     modifier: Modifier = Modifier,
 ) {
     LaunchedEffect(Unit) { onAction(CalendarAction.Opened) }
-    var showFilter by remember { mutableStateOf(false) }
     var showMonthPicker by remember { mutableStateOf(false) }
 
     // Surface sets the content color, so that texts follow the theme
@@ -103,13 +104,7 @@ fun CalendarHomeScreen(
         if (!state.ready) return@Surface
         Box(modifier = Modifier.fillMaxSize()) {
             Column(modifier = Modifier.fillMaxSize()) {
-                CalendarTopBar(
-                    state,
-                    onAction,
-                    onOpenAccount,
-                    onFilter = { showFilter = true },
-                    onTitle = { showMonthPicker = true },
-                )
+                CalendarTopBar(state, onAction, onOpenAccount, onTitle = { showMonthPicker = true })
                 val defaultName = stringResource(Res.string.default_local_calendar)
                 when {
                     !state.hasCalendars ->
@@ -175,18 +170,6 @@ fun CalendarHomeScreen(
                 onAction(CalendarAction.JumpTo(it))
             },
             onDismiss = { showMonthPicker = false },
-        )
-    }
-    if (showFilter) {
-        CalendarFilterSheet(
-            calendars = state.calendars,
-            onDismiss = { showFilter = false },
-            onToggle = { calendar, visible ->
-                onAction(
-                    if (calendar.tasks) CalendarAction.SetTasksVisible(visible)
-                    else CalendarAction.SetCalendarVisible(calendar.id, visible)
-                )
-            },
         )
     }
 
@@ -285,7 +268,6 @@ private fun CalendarTopBar(
     state: CalendarUiState,
     onAction: (CalendarAction) -> Unit,
     onOpenAccount: () -> Unit,
-    onFilter: () -> Unit,
     onTitle: () -> Unit,
 ) {
     Column {
@@ -301,14 +283,6 @@ private fun CalendarTopBar(
             actions = {
                 TextButton(onClick = { onAction(CalendarAction.Today) }) {
                     Text(stringResource(Res.string.today))
-                }
-                if (state.calendars.size > 1) {
-                    IconButton(onClick = onFilter) {
-                        Icon(
-                            imageVector = vectorResource(Res.drawable.filter_list),
-                            contentDescription = stringResource(Res.string.shown_calendars),
-                        )
-                    }
                 }
                 IconButton(onClick = onOpenAccount) {
                     Icon(
@@ -334,6 +308,7 @@ private fun CalendarTopBar(
                 onSelect = { onAction(CalendarAction.SetMode(it)) },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
             )
+            CalendarChips(state.calendars, onAction)
             val status =
                 when {
                     state.syncError != null ->
@@ -506,12 +481,18 @@ internal fun EventRow(event: DayEvent, is24Hr: Boolean, onClick: () -> Unit) {
     ) {
         Box(modifier = Modifier.width(6.dp).fillMaxHeight().background(color))
         Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp).weight(1f)) {
-            Text(
-                text = event.title.ifBlank { "—" },
-                style = MaterialTheme.typography.bodyLarge,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // The pattern of the calendar; tasks have their check box instead
+                if (event.taskId == null) {
+                    PatternSwatch(event.pattern, color, Modifier.padding(end = 8.dp))
+                }
+                Text(
+                    text = event.title.ifBlank { "—" },
+                    style = MaterialTheme.typography.bodyLarge,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             Text(
                 text = timeText(event, is24Hr),
                 style = MaterialTheme.typography.bodySmall,
@@ -543,44 +524,49 @@ internal fun timeText(event: DayEvent, is24Hr: Boolean): String {
         Formatting.time(event.end, zone, is24Hr)
 }
 
-/** Chooses which calendars the views show. */
+/**
+ * One chip per calendar under the views, and one for the tasks with a date: a tap shows or hides
+ * it, and each chip shows the pattern of its calendar, as a legend.
+ */
 @Composable
-private fun CalendarFilterSheet(
-    calendars: List<CalendarFilterItem>,
-    onDismiss: () -> Unit,
-    onToggle: (CalendarFilterItem, Boolean) -> Unit,
-) {
-    GritBottomSheet(onDismissRequest = onDismiss, padding = 16.dp) {
-        Text(
-            stringResource(Res.string.shown_calendars),
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(bottom = 8.dp),
-        )
+private fun CalendarChips(calendars: List<CalendarFilterItem>, onAction: (CalendarAction) -> Unit) {
+    if (calendars.isEmpty()) return
+    val sample = MaterialTheme.colorScheme.onSurfaceVariant
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier =
+            Modifier.fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp),
+    ) {
         for (calendar in calendars) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier =
-                    Modifier.fillMaxWidth()
-                        .clip(RowShape)
-                        .clickable { onToggle(calendar, !calendar.visible) }
-                        .padding(vertical = 4.dp),
-            ) {
-                Checkbox(checked = calendar.visible, onCheckedChange = null)
-                Column(modifier = Modifier.padding(start = 8.dp)) {
-                    Text(
-                        if (calendar.tasks) stringResource(Res.string.tasks_with_date)
-                        else calendar.name,
-                        style = MaterialTheme.typography.bodyLarge,
+            FilterChip(
+                selected = calendar.visible,
+                onClick = {
+                    onAction(
+                        if (calendar.tasks) CalendarAction.SetTasksVisible(!calendar.visible)
+                        else CalendarAction.SetCalendarVisible(calendar.id, !calendar.visible)
                     )
-                    if (calendar.local && !calendar.tasks) {
-                        Text(
-                            stringResource(Res.string.on_this_device),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                },
+                label = {
+                    Text(
+                        if (calendar.tasks) stringResource(Res.string.tasks_chip)
+                        else calendar.name,
+                        maxLines = 1,
+                    )
+                },
+                leadingIcon = {
+                    if (calendar.tasks) {
+                        Text(TASK_MARK.trim())
+                    } else {
+                        PatternSwatch(
+                            calendar.pattern,
+                            sample,
+                            Modifier.alpha(if (calendar.visible) 1f else 0.4f),
                         )
                     }
-                }
-            }
+                },
+            )
         }
     }
 }
