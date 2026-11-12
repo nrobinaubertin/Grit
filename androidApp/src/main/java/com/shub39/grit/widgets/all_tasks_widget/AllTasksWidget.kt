@@ -93,12 +93,15 @@ class AllTasksWidget : GlanceAppWidget(), KoinComponent {
             val size = LocalSize.current
             val tasks by repo.getTasksFlow().collectAsState(initial = emptyMap())
             val is24Hr by datastore.getIs24Hr().collectAsState(initial = false)
+            // "Reorder tasks when marked as completed", as in the task list of the app
+            val reorder by datastore.getTaskReorderPref().collectAsState(initial = true)
 
             key(size) {
                 GlanceTheme {
                     Content(
                         tasks = tasks.filter { it.value.isNotEmpty() },
                         is24Hr = is24Hr,
+                        reorder = reorder,
                         onToggleTask = { task ->
                             scope.launch {
                                 statusHandler.toggleTask(task)
@@ -171,6 +174,7 @@ class AllTasksWidget : GlanceAppWidget(), KoinComponent {
             Content(
                 tasks = previewItems,
                 is24Hr = false,
+                reorder = true,
                 onToggleTask = {},
                 onToggleSubTask = {},
                 onUpdateWidget = {},
@@ -184,6 +188,8 @@ class AllTasksWidget : GlanceAppWidget(), KoinComponent {
 private fun Content(
     tasks: Map<Category, List<TaskWithSubTasks>>,
     is24Hr: Boolean,
+    /** Completed tasks go after the open ones. Otherwise every task keeps its place. */
+    reorder: Boolean,
     onToggleTask: (Task) -> Unit,
     onToggleSubTask: (SubTask) -> Unit,
     onUpdateWidget: () -> Unit,
@@ -221,8 +227,11 @@ private fun Content(
                 horizontalAlignment = Alignment.Start,
             ) {
                 tasks.entries.forEach { (category, taskWithSubTasks) ->
-                    val open = taskWithSubTasks.filter { !it.task.status }
-                    val completed = taskWithSubTasks.filter { it.task.status }
+                    val open =
+                        if (reorder) taskWithSubTasks.filter { !it.task.status }
+                        else taskWithSubTasks
+                    val completed =
+                        if (reorder) taskWithSubTasks.filter { it.task.status } else emptyList()
 
                     item {
                         SectionHeader(
@@ -467,6 +476,7 @@ private fun GlancePreview() {
                     )
             ),
         is24Hr = false,
+        reorder = true,
         onToggleTask = {},
         onToggleSubTask = {},
         onUpdateWidget = {},
