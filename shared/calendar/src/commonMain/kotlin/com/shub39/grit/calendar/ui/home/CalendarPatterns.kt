@@ -34,6 +34,12 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.shub39.grit.calendar.data.CalendarPattern
 
+/** The color of an event without a category color: a neutral grey, in light and dark themes. */
+internal val NoCategoryColor = Color(0xFF808080)
+
+/** The color to draw an event with: its category color, or [NoCategoryColor]. */
+internal fun eventColor(argb: Int?): Color = argb?.let { Color(it) } ?: NoCategoryColor
+
 /**
  * Draws an event block in [color] with [pattern]. [tint] is the alpha of the solid fill; [bar] the
  * width of the side bar of the filled patterns, or 0 for none; [background] covers the grid under

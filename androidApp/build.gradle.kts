@@ -28,7 +28,7 @@ plugins {
 
 val appName = "Grit"
 // Fork version: raise it following semver with every change (feature: minor, fix: patch)
-val appVersionName = "7.10.0"
+val appVersionName = "7.10.1"
 // major * 10000 + minor * 100 + patch, always above upstream's 6410
 val appVersionCode =
     appVersionName.split(".").map(String::toInt).let { (major, minor, patch) ->

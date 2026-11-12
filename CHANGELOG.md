@@ -1,5 +1,8 @@
 # Changelog
 
+## 7.10.1
+- Events without a category are grey instead of the theme color
+
 ## 7.10.0
 - Each calendar has a pattern in the views (solid, outline, hatched, dashed, dotted or cross-hatched), so calendars differ while colors show categories
 - A row of calendar chips under the views shows or hides each calendar and the tasks, and shows their patterns

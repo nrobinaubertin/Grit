@@ -67,7 +67,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.text.style.TextAlign
@@ -468,7 +467,7 @@ private fun EmptyDay() {
 
 @Composable
 internal fun EventRow(event: DayEvent, is24Hr: Boolean, onClick: () -> Unit) {
-    val color = event.color?.let { Color(it) } ?: MaterialTheme.colorScheme.primary
+    val color = eventColor(event.color)
     Row(
         modifier =
             Modifier.fillMaxWidth()

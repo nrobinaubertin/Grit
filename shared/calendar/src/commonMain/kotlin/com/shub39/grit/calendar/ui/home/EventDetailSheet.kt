@@ -40,7 +40,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.shub39.grit.calendar.ui.Formatting
 import com.shub39.grit.shared.ui.components.GritBottomSheet
@@ -77,11 +76,7 @@ fun EventDetailSheet(
             Text(text = dateLine(event, is24Hr), style = MaterialTheme.typography.bodyLarge)
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                PatternSwatch(
-                    event.pattern,
-                    event.color?.let { Color(it) } ?: MaterialTheme.colorScheme.primary,
-                    Modifier.padding(end = 8.dp),
-                )
+                PatternSwatch(event.pattern, eventColor(event.color), Modifier.padding(end = 8.dp))
                 Text(
                     text =
                         listOfNotNull(
@@ -100,10 +95,7 @@ fun EventDetailSheet(
                         modifier =
                             Modifier.size(12.dp)
                                 .clip(CircleShape)
-                                .background(
-                                    event.color?.let { Color(it) }
-                                        ?: MaterialTheme.colorScheme.primary
-                                )
+                                .background(eventColor(event.color))
                     )
                     Text(
                         text = category,
@@ -201,11 +193,7 @@ private fun TaskDetailSheet(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier =
-                        Modifier.size(12.dp)
-                            .clip(CircleShape)
-                            .background(
-                                event.color?.let { Color(it) } ?: MaterialTheme.colorScheme.primary
-                            )
+                        Modifier.size(12.dp).clip(CircleShape).background(eventColor(event.color))
                 )
                 Text(
                     text =

@@ -42,7 +42,6 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
@@ -296,7 +295,7 @@ private fun WeekBand(
                     val corner = CornerRadius(4.dp.toPx())
                     onDrawBehind {
                         for (segment in lanes.segments) {
-                            val color = segment.event.color?.let { Color(it) } ?: colors.primary
+                            val color = eventColor(segment.event.color)
                             val left =
                                 gutter +
                                     segment.startColumn * columnWidth +
@@ -440,7 +439,7 @@ private fun HourGrid(
                         }
                         for (box in boxes) {
                             val event = box.event
-                            val color = event.color?.let { Color(it) } ?: colors.primary
+                            val color = eventColor(event.color)
                             val width = columnWidth / box.slots
                             val left = gutter + box.column * columnWidth + box.slot * width + inset
                             val top = box.startMinute / 60f * hourHeight + inset

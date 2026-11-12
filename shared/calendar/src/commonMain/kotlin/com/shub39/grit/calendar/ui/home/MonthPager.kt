@@ -43,7 +43,6 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
@@ -262,7 +261,7 @@ private fun MonthDrawing(
                         val top = row * cellHeight + firstLine
                         for (segment in lanes.segments) {
                             val event = segment.event
-                            val color = event.color?.let { Color(it) } ?: colors.primary
+                            val color = eventColor(event.color)
                             val spanning =
                                 event.allDay ||
                                     segment.startColumn != segment.endColumn ||

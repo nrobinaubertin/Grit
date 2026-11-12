@@ -73,6 +73,7 @@ import com.shub39.grit.calendar.data.db.CollectionEntity
 import com.shub39.grit.calendar.ui.Formatting
 import com.shub39.grit.calendar.ui.LightSelector
 import com.shub39.grit.calendar.ui.LightTopBar
+import com.shub39.grit.calendar.ui.home.NoCategoryColor
 import com.shub39.grit.calendar.ui.home.PatternSwatch
 import grit.shared.calendar.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
@@ -1038,7 +1039,7 @@ private fun ColorDot(color: Int?, size: Int = 14) {
         modifier =
             Modifier.size(size.dp)
                 .clip(CircleShape)
-                .background(color?.let { Color(it) } ?: MaterialTheme.colorScheme.primary)
+                .background(color?.let { Color(it) } ?: NoCategoryColor)
     )
 }
 

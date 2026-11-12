@@ -1,5 +1,11 @@
 [
   {
+    "version": "7.10.1",
+    "changes": [
+      "Events without a category are grey instead of the theme color"
+    ]
+  },
+  {
     "version": "7.10.0",
     "changes": [
       "Each calendar has a pattern in the views (solid, outline, hatched, dashed, dotted or cross-hatched), so calendars differ while colors show categories",
@@ -61,12 +67,6 @@
       "Task categories sync with task lists on a CalDAV server, with subtasks, done state, reminders and order",
       "Two people can share a task list",
       "Task lists sync when the Tasks tab opens"
-    ]
-  },
-  {
-    "version": "7.6.0",
-    "changes": [
-      "Open tasks with a reminder show in the calendar, and can be marked as done there"
     ]
   }
 ]
