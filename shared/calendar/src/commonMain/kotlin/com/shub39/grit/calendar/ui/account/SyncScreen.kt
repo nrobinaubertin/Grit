@@ -40,6 +40,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.shub39.grit.calendar.data.db.CollectionEntity
 import com.shub39.grit.calendar.ui.LightTopBar
 import grit.shared.calendar.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
@@ -55,6 +56,10 @@ fun SyncScreen(state: AccountState, viewModel: AccountViewModel, onBack: () -> U
     var changePassword by remember { mutableStateOf(false) }
     var stopTaskList by remember { mutableStateOf<TaskListUi?>(null) }
     var startCategory by remember { mutableStateOf<TaskCategoryUi?>(null) }
+    var addByUrl by remember { mutableStateOf(false) }
+    var confirmStart by remember { mutableStateOf<CollectionEntity?>(null) }
+    var confirmStop by remember { mutableStateOf<CollectionEntity?>(null) }
+    val exportResult by viewModel.export.collectAsState()
     val syncToggle by viewModel.syncToggle.collectAsState()
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -92,6 +97,13 @@ fun SyncScreen(state: AccountState, viewModel: AccountViewModel, onBack: () -> U
                     item {
                         AccountCard(state, viewModel, onChangePassword = { changePassword = true })
                     }
+                    syncedCalendars(
+                        state,
+                        viewModel,
+                        onAddByUrl = { addByUrl = true },
+                        onStartSyncing = { confirmStart = it },
+                        onStopSyncing = { confirmStop = it },
+                    )
                     taskListSection(
                         state,
                         viewModel,
@@ -136,6 +148,30 @@ fun SyncScreen(state: AccountState, viewModel: AccountViewModel, onBack: () -> U
             onDismiss = { startCategory = null },
         )
     }
+    confirmStart?.let { calendar ->
+        ConfirmDialog(
+            text = stringResource(Res.string.start_syncing_confirm, calendar.displayName.orEmpty()),
+            confirm = stringResource(Res.string.start_syncing),
+            onConfirm = {
+                confirmStart = null
+                viewModel.startSyncing(calendar.id)
+            },
+            onDismiss = { confirmStart = null },
+        )
+    }
+    confirmStop?.let { calendar ->
+        ConfirmDialog(
+            text = stringResource(Res.string.stop_syncing_confirm, calendar.displayName.orEmpty()),
+            confirm = stringResource(Res.string.stop_syncing),
+            onConfirm = {
+                confirmStop = null
+                viewModel.stopSyncing(calendar)
+            },
+            onDismiss = { confirmStop = null },
+        )
+    }
+    if (addByUrl) AddByUrlDialog(viewModel, onDismiss = { addByUrl = false })
+    exportResult?.let { ExportDialog(it, onDismiss = viewModel::closeExport) }
     syncToggle?.let { SyncToggleDialog(it, viewModel) }
     if (changePassword) ChangePasswordDialog(viewModel, onDismiss = { changePassword = false })
     if (confirmRemove) {

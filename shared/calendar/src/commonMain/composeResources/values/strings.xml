@@ -152,4 +152,14 @@
     <string name="sync_server_none">No sync server is connected.</string>
     <string name="sync_server_of">%1$s on %2$s</string>
     <string name="open_sync_settings">Sync server settings</string>
+    <string name="edit_category">Edit category</string>
+    <string name="category_name">Name</string>
+    <string name="category_used_in">Used in %1$s</string>
+    <string name="category_unused">No event uses this category</string>
+    <string name="category_merge">A category with this name exists: the two become one. Events in read-only calendars keep the former name.</string>
+    <string name="export_ics">Export .ics</string>
+    <string name="export_done">%1$d events saved in %2$s.</string>
+    <string name="export_failed">Grit could not export this calendar: %1$s</string>
+    <string name="sync_calendars">Calendars</string>
+    <string name="sync_calendars_body">The calendars of the server sync with this device. “Stop syncing” keeps a calendar on this device only. A calendar of this device can start syncing.</string>
 </resources>

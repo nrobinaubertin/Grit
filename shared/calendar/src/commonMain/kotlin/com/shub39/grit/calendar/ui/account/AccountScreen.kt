@@ -67,6 +67,7 @@ import androidx.compose.ui.unit.dp
 import com.shub39.grit.calendar.data.CategoryColors
 import com.shub39.grit.calendar.data.PhoneCalendar
 import com.shub39.grit.calendar.data.db.CategoryEntity
+import com.shub39.grit.calendar.data.db.CategoryUse
 import com.shub39.grit.calendar.data.db.CollectionEntity
 import com.shub39.grit.calendar.ui.Formatting
 import com.shub39.grit.calendar.ui.LightSelector
@@ -91,12 +92,10 @@ fun AccountScreen(
     var editCategory by remember { mutableStateOf<CategoryEntity?>(null) }
     var deleteCategory by remember { mutableStateOf<CategoryEntity?>(null) }
     var deleteLocal by remember { mutableStateOf<CollectionEntity?>(null) }
-    var addByUrl by remember { mutableStateOf(false) }
     var phoneDenied by remember { mutableStateOf(false) }
     val importUi by viewModel.import.collectAsState()
     val syncToggle by viewModel.syncToggle.collectAsState()
-    var confirmStart by remember { mutableStateOf<CollectionEntity?>(null) }
-    var confirmStop by remember { mutableStateOf<CollectionEntity?>(null) }
+    val exportResult by viewModel.export.collectAsState()
     val askCalendarPermission = rememberCalendarReadPermission { granted ->
         phoneDenied = !granted
         viewModel.onPhonePermission()
@@ -127,7 +126,6 @@ fun AccountScreen(
                     viewModel,
                     onNew = { newLocal = true },
                     onDelete = { deleteLocal = it },
-                    onStartSyncing = { confirmStart = it },
                 )
                 if (state.phoneSupported) {
                     phoneSection(state, viewModel, phoneDenied, onAllow = askCalendarPermission)
@@ -140,12 +138,6 @@ fun AccountScreen(
                 )
                 item { SectionTitle(stringResource(Res.string.caldav_server)) }
                 item { SyncServerLink(state, onOpenSync) }
-                serverCalendars(
-                    state,
-                    viewModel,
-                    onAddByUrl = { addByUrl = true },
-                    onStopSyncing = { confirmStop = it },
-                )
                 importSection(onChoose = viewModel::pickIcsFile)
             }
         }
@@ -167,13 +159,15 @@ fun AccountScreen(
     }
     editCategory?.let { category ->
         CategoryDialog(
-            title = category.name,
+            title = stringResource(Res.string.edit_category),
             initialName = category.name,
             initialColor = category.color,
-            nameEditable = false,
+            nameEditable = true,
+            uses = state.categoryUses[category.name].orEmpty(),
+            otherNames = state.categories.map { it.name }.filter { it != category.name },
             onDismiss = { editCategory = null },
-            onConfirm = { _, color ->
-                viewModel.setCategoryColor(category.name, color)
+            onConfirm = { name, color ->
+                viewModel.updateCategory(category.name, name, color)
                 editCategory = null
             },
         )
@@ -228,30 +222,18 @@ fun AccountScreen(
         )
     }
     importUi?.let { ImportDialog(it, state, viewModel) }
-    confirmStart?.let { calendar ->
-        ConfirmDialog(
-            text = stringResource(Res.string.start_syncing_confirm, calendar.displayName.orEmpty()),
-            confirm = stringResource(Res.string.start_syncing),
-            onConfirm = {
-                confirmStart = null
-                viewModel.startSyncing(calendar.id)
-            },
-            onDismiss = { confirmStart = null },
-        )
-    }
-    confirmStop?.let { calendar ->
-        ConfirmDialog(
-            text = stringResource(Res.string.stop_syncing_confirm, calendar.displayName.orEmpty()),
-            confirm = stringResource(Res.string.stop_syncing),
-            onConfirm = {
-                confirmStop = null
-                viewModel.stopSyncing(calendar)
-            },
-            onDismiss = { confirmStop = null },
-        )
-    }
     syncToggle?.let { SyncToggleDialog(it, viewModel) }
-    if (addByUrl) AddByUrlDialog(viewModel, onDismiss = { addByUrl = false })
+    exportResult?.let { ExportDialog(it, onDismiss = viewModel::closeExport) }
+}
+
+/** The result of an .ics export. */
+@Composable
+internal fun ExportDialog(message: String, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        text = { Text(message) },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(Res.string.ok)) } },
+    )
 }
 
 /** Progress and result of "Start syncing" or "Stop syncing". */
@@ -314,7 +296,6 @@ private fun LazyListScope.localSection(
     viewModel: AccountViewModel,
     onNew: () -> Unit,
     onDelete: (CollectionEntity) -> Unit,
-    onStartSyncing: (CollectionEntity) -> Unit,
 ) {
     item {
         Column {
@@ -330,11 +311,8 @@ private fun LazyListScope.localSection(
         CalendarRow(
             collection = calendar,
             onVisible = { viewModel.setVisible(calendar.id, it) },
-            // Only with a server to sync with
-            syncAction =
-                if (state.account != null) {
-                    stringResource(Res.string.start_syncing) to { onStartSyncing(calendar) }
-                } else null,
+            syncAction = null,
+            onExport = { viewModel.exportCalendar(calendar) },
             trailing = {
                 IconButton(onClick = { onDelete(calendar) }) {
                     Icon(
@@ -576,11 +554,14 @@ private fun LazyListScope.categorySection(
                         .padding(start = 16.dp, top = 4.dp, bottom = 4.dp, end = 4.dp),
             ) {
                 ColorDot(CategoryColors.argb(category.color))
-                Text(
-                    category.name,
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
-                )
+                Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                    Text(category.name, style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        usesText(state.categoryUses[category.name].orEmpty()),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 IconButton(onClick = { onDelete(category) }) {
                     Icon(
                         vectorResource(Res.drawable.delete),
@@ -593,15 +574,29 @@ private fun LazyListScope.categorySection(
     item { TextButton(onClick = onNew) { Text(stringResource(Res.string.new_category)) } }
 }
 
-/** The calendars of the CalDAV server, when an account is connected. */
-private fun LazyListScope.serverCalendars(
+/**
+ * The calendars of the CalDAV server, then the calendars of this device that can start syncing, on
+ * the sync server page.
+ */
+internal fun LazyListScope.syncedCalendars(
     state: AccountState,
     viewModel: AccountViewModel,
     onAddByUrl: () -> Unit,
+    onStartSyncing: (CollectionEntity) -> Unit,
     onStopSyncing: (CollectionEntity) -> Unit,
 ) {
     if (state.account == null) return
-    items(state.collections, key = { it.id }) { collection ->
+    item {
+        Column {
+            SectionTitle(stringResource(Res.string.sync_calendars))
+            Text(
+                stringResource(Res.string.sync_calendars_body),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+    items(state.collections, key = { "server-${it.id}" }) { collection ->
         CalendarRow(
             collection = collection,
             onVisible = { viewModel.setVisible(collection.id, it) },
@@ -615,9 +610,19 @@ private fun LazyListScope.serverCalendars(
                             viewModel.startSyncing(collection.id)
                         }
                 },
+            onExport = { viewModel.exportCalendar(collection) },
             trailing = null,
             onRemove =
                 if (collection.manual) ({ viewModel.removeCollection(collection.id) }) else null,
+        )
+    }
+    items(state.localCalendars, key = { "device-${it.id}" }) { calendar ->
+        CalendarRow(
+            collection = calendar,
+            onVisible = { viewModel.setVisible(calendar.id, it) },
+            syncAction = stringResource(Res.string.start_syncing) to { onStartSyncing(calendar) },
+            note = stringResource(Res.string.on_this_device),
+            trailing = null,
         )
     }
     item { TextButton(onClick = onAddByUrl) { Text(stringResource(Res.string.add_by_url)) } }
@@ -842,6 +847,9 @@ private fun CalendarRow(
     syncAction: Pair<String, () -> Unit>?,
     trailing: (@Composable () -> Unit)?,
     onRemove: (() -> Unit)? = null,
+    onExport: (() -> Unit)? = null,
+    /** A short line under the name, for example "On this device". */
+    note: String? = null,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Row(
@@ -855,6 +863,7 @@ private fun CalendarRow(
                 )
                 val notes =
                     listOfNotNull(
+                        note,
                         if (!collection.canWrite) stringResource(Res.string.read_only) else null,
                         collection.lastError?.let { stringResource(Res.string.sync_error, it) },
                     )
@@ -867,11 +876,16 @@ private fun CalendarRow(
                             else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                if (syncAction != null || onRemove != null) {
+                if (syncAction != null || onRemove != null || onExport != null) {
                     Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         syncAction?.let { (label, action) ->
                             TextButton(onClick = action, contentPadding = PaddingValues(0.dp)) {
                                 Text(label)
+                            }
+                        }
+                        if (onExport != null) {
+                            TextButton(onClick = onExport, contentPadding = PaddingValues(0.dp)) {
+                                Text(stringResource(Res.string.export_ics))
                             }
                         }
                         if (onRemove != null) {
@@ -948,6 +962,16 @@ private fun NewLocalCalendarDialog(viewModel: AccountViewModel, onDismiss: () ->
 
 /** Name and color of a category. The name cannot change once events use it. */
 @OptIn(ExperimentalLayoutApi::class)
+/** "Used in Family (3), Personal (1)", or that no event uses the category. */
+@Composable
+private fun usesText(uses: List<CategoryUse>): String =
+    if (uses.isEmpty()) stringResource(Res.string.category_unused)
+    else
+        stringResource(
+            Res.string.category_used_in,
+            uses.joinToString(", ") { "${it.calendar ?: "?"} (${it.events})" },
+        )
+
 @Composable
 internal fun CategoryDialog(
     title: String,
@@ -956,6 +980,10 @@ internal fun CategoryDialog(
     nameEditable: Boolean,
     onDismiss: () -> Unit,
     onConfirm: (name: String, color: String) -> Unit,
+    /** For an existing category: the calendars that hold its events. */
+    uses: List<CategoryUse>? = null,
+    /** The names of the other categories, to tell when a new name joins one of them. */
+    otherNames: List<String> = emptyList(),
 ) {
     var name by remember { mutableStateOf(initialName) }
     var color by remember { mutableStateOf(initialColor) }
@@ -969,9 +997,19 @@ internal fun CategoryDialog(
                     OutlinedTextField(
                         value = name,
                         onValueChange = { name = it },
-                        label = { Text(stringResource(Res.string.calendar_name)) },
+                        label = { Text(stringResource(Res.string.category_name)) },
                         singleLine = true,
                     )
+                }
+                if (uses != null) {
+                    Text(usesText(uses), style = MaterialTheme.typography.bodyMedium)
+                    if (name.trim() != initialName && name.trim() in otherNames) {
+                        Text(
+                            stringResource(Res.string.category_merge),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
                 Text(stringResource(Res.string.color), style = MaterialTheme.typography.labelLarge)
                 FlowRow(
@@ -999,7 +1037,7 @@ internal fun CategoryDialog(
         },
         confirmButton = {
             TextButton(enabled = name.isNotBlank(), onClick = { onConfirm(name.trim(), color) }) {
-                Text(stringResource(if (nameEditable) Res.string.create else Res.string.save))
+                Text(stringResource(if (uses == null) Res.string.create else Res.string.save))
             }
         },
         dismissButton = {
@@ -1009,7 +1047,7 @@ internal fun CategoryDialog(
 }
 
 @Composable
-private fun AddByUrlDialog(viewModel: AccountViewModel, onDismiss: () -> Unit) {
+internal fun AddByUrlDialog(viewModel: AccountViewModel, onDismiss: () -> Unit) {
     var url by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }

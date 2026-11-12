@@ -1,5 +1,11 @@
 # Changelog
 
+## 7.9.0
+- Settings > Sync server also holds the calendars of the server: show them, stop syncing, export them, add one by URL, or start syncing a calendar of this device
+- The calendar settings keep the calendars of this device, the categories and the import
+- Export a calendar as an .ics file for other calendar apps
+- Rename an event category, and see which calendars use each category
+
 ## 7.8.0
 - The sync server is in the settings: Settings > Sync server holds the CalDAV account and the task lists
 - Removing the account keeps its calendars and task lists on this device, and they stop syncing

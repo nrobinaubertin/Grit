@@ -152,4 +152,14 @@
     <string name="sync_server_none">Aucun serveur de synchronisation n’est connecté.</string>
     <string name="sync_server_of">%1$s sur %2$s</string>
     <string name="open_sync_settings">Réglages du serveur de synchronisation</string>
+    <string name="edit_category">Modifier la catégorie</string>
+    <string name="category_name">Nom</string>
+    <string name="category_used_in">Utilisée dans : %1$s</string>
+    <string name="category_unused">Aucun événement n’utilise cette catégorie</string>
+    <string name="category_merge">Une catégorie porte déjà ce nom : les deux n’en font plus qu’une. Les événements des calendriers en lecture seule gardent l’ancien nom.</string>
+    <string name="export_ics">Exporter en .ics</string>
+    <string name="export_done">%1$d événements enregistrés dans %2$s.</string>
+    <string name="export_failed">Grit n’a pas pu exporter ce calendrier : %1$s</string>
+    <string name="sync_calendars">Calendriers</string>
+    <string name="sync_calendars_body">Les calendriers du serveur se synchronisent avec cet appareil. « Ne plus synchroniser » garde un calendrier sur cet appareil uniquement. Un calendrier de cet appareil peut commencer à se synchroniser.</string>
 </resources>

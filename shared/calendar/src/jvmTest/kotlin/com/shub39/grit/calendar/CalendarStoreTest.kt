@@ -63,6 +63,69 @@ class CalendarStoreTest {
         )
     }
 
+    @Test
+    fun `a category shows its calendars, renames in writable events, and exports`() = runBlocking {
+        val writable = collection()
+        val account = dao.accounts().single().id
+        val shared =
+            dao.insertCollection(
+                CollectionEntity(
+                    accountId = account,
+                    url = "https://dav/u/shared/",
+                    displayName = "Shared",
+                    canWrite = false,
+                )
+            )
+        store.applyRemote(
+            writable,
+            listOf(
+                RemoteItem(
+                    "https://dav/u/cal/run.ics",
+                    "\"1\"",
+                    ics(
+                        "run",
+                        "DTSTART:20261110T100000Z\nDTEND:20261110T110000Z\nSUMMARY:Run\nCATEGORIES:Sport",
+                    ),
+                )
+            ),
+        )
+        store.applyRemote(
+            shared,
+            listOf(
+                RemoteItem(
+                    "https://dav/u/shared/swim.ics",
+                    "\"1\"",
+                    ics(
+                        "swim",
+                        "DTSTART:20261111T100000Z\nDTEND:20261111T110000Z\nSUMMARY:Swim\nCATEGORIES:Sport",
+                    ),
+                )
+            ),
+        )
+        val uses = store.categoryUsesFlow().first().getValue("Sport")
+        assertEquals(listOf("Cal" to 1, "Shared" to 1), uses.map { it.calendar to it.events })
+
+        store.renameCategory("Sport", "Training", "teal")
+        val run = dao.eventsOf(writable).single()
+        assertEquals("Training", run.category)
+        assertTrue("CATEGORIES:Training" in run.ics, run.ics)
+        assertTrue(run.dirty)
+        // The read-only calendar keeps the former name, and so does its category
+        assertEquals("Sport", dao.eventsOf(shared).single().category)
+        val after = store.categoryUsesFlow().first()
+        assertEquals(listOf("Cal"), after.getValue("Training").map { it.calendar })
+        assertEquals(listOf("Shared"), after.getValue("Sport").map { it.calendar })
+        assertEquals(
+            setOf("Sport", "Training"),
+            dao.categoriesFlow().first().map { it.name }.toSet(),
+        )
+
+        val file = store.exportIcs(writable)
+        assertTrue("X-WR-CALNAME:Cal\r\n" in file, file)
+        assertEquals(1, Regex("BEGIN:VEVENT").findAll(file).count(), file)
+        assertTrue("SUMMARY:Run" in file && "SUMMARY:Swim" !in file, file)
+    }
+
     private fun ics(uid: String, body: String) =
         "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:test\r\nBEGIN:VEVENT\r\nUID:$uid\r\n" +
             "DTSTAMP:20260101T000000Z\r\n" +

@@ -1,5 +1,14 @@
 [
   {
+    "version": "7.9.0",
+    "changes": [
+      "Settings > Sync server also holds the calendars of the server: show them, stop syncing, export them, add one by URL, or start syncing a calendar of this device",
+      "The calendar settings keep the calendars of this device, the categories and the import",
+      "Export a calendar as an .ics file for other calendar apps",
+      "Rename an event category, and see which calendars use each category"
+    ]
+  },
+  {
     "version": "7.8.0",
     "changes": [
       "The sync server is in the settings: Settings > Sync server holds the CalDAV account and the task lists",
@@ -58,13 +67,6 @@
       "Tasks can have a color",
       "Choose the start screen in the settings: Tasks, Habits or Calendar",
       "Removed the Grit Plus block"
-    ]
-  },
-  {
-    "version": "7.4.0",
-    "changes": [
-      "Stop syncing deletes a calendar from the server when nobody else uses it",
-      "Start syncing reuses a server calendar that was kept"
     ]
   }
 ]

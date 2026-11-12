@@ -27,12 +27,15 @@ import com.shub39.grit.calendar.data.PhoneCalendar
 import com.shub39.grit.calendar.data.PhoneCalendars
 import com.shub39.grit.calendar.data.db.AccountEntity
 import com.shub39.grit.calendar.data.db.CategoryEntity
+import com.shub39.grit.calendar.data.db.CategoryUse
 import com.shub39.grit.calendar.data.db.CollectionEntity
 import com.shub39.grit.calendar.tasks.TaskListSync
 import com.shub39.grit.core.tasks.TaskRepo
 import grit.shared.calendar.generated.resources.Res
 import grit.shared.calendar.generated.resources.error_no_calendar_at_url
 import grit.shared.calendar.generated.resources.error_wrong_login
+import grit.shared.calendar.generated.resources.export_done
+import grit.shared.calendar.generated.resources.export_failed
 import grit.shared.calendar.generated.resources.import_no_events
 import grit.shared.calendar.generated.resources.import_unreadable
 import grit.shared.calendar.generated.resources.start_syncing_failed
@@ -44,8 +47,10 @@ import io.github.vinceglb.filekit.FileKit
 import io.github.vinceglb.filekit.dialogs.FileKitMode
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.openFilePicker
+import io.github.vinceglb.filekit.dialogs.openFileSaver
 import io.github.vinceglb.filekit.name
 import io.github.vinceglb.filekit.readString
+import io.github.vinceglb.filekit.writeString
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -80,6 +85,8 @@ data class AccountState(
     /** Calendars that exist only on this device. */
     val localCalendars: List<CollectionEntity> = emptyList(),
     val categories: List<CategoryEntity> = emptyList(),
+    /** The calendars that hold events of each category, by category name. */
+    val categoryUses: Map<String, List<CategoryUse>> = emptyMap(),
     /** False on desktop, which has no calendars of other apps. */
     val phoneSupported: Boolean = false,
     /** True if Grit may read the calendars of other apps, to import them. */
@@ -155,6 +162,9 @@ class AccountViewModel(
 
     /** Null when no import is running. */
     val import = MutableStateFlow<ImportUi?>(null)
+
+    /** The result of the last .ics export, or null. */
+    val export = MutableStateFlow<String?>(null)
     private var importFile: List<EventResource> = emptyList()
     private var importName: String? = null
 
@@ -191,13 +201,13 @@ class AccountViewModel(
         combine(
                 store.accountsFlow(),
                 store.collectionsFlow(),
-                store.categoriesFlow(),
+                combine(store.categoriesFlow(), store.categoryUsesFlow(), ::Pair),
                 combine(syncManager.running, form, store.defaultViewFlow(), ::Triple),
                 combine(phoneTick.flatMapLatest { phone.calendars() }, tasks, ::Pair),
             ) {
                 accounts,
                 collections,
-                categories,
+                (categories, categoryUses),
                 (running, form, defaultView),
                 (phoneCalendars, tasks) ->
                 val account = accounts.firstOrNull { !it.local }
@@ -207,6 +217,7 @@ class AccountViewModel(
                     collections = collections.filter { it.accountId == account?.id },
                     localCalendars = collections.filter { it.accountId == local?.id },
                     categories = categories,
+                    categoryUses = categoryUses,
                     phoneSupported = phone.supported,
                     phonePermission = phone.hasPermission(),
                     phoneCalendars = phoneCalendars,
@@ -457,6 +468,46 @@ class AccountViewModel(
 
     fun setCategoryColor(name: String, color: String) {
         viewModelScope.launch { store.setCategoryColor(name, color) }
+    }
+
+    /** Renames a category (or only changes its color if the name stays). */
+    fun updateCategory(oldName: String, newName: String, color: String) {
+        viewModelScope.launch { store.renameCategory(oldName, newName, color) }
+    }
+
+    /** Saves the events of a calendar as an .ics file where the user chooses. */
+    fun exportCalendar(calendar: CollectionEntity) {
+        viewModelScope.launch {
+            export.value =
+                try {
+                    val text = withContext(Dispatchers.Default) { store.exportIcs(calendar.id) }
+                    val name =
+                        (calendar.displayName ?: "calendar")
+                            .replace(Regex("[^\\p{L}\\p{N} ._-]"), "_")
+                            .trim()
+                            .ifEmpty { "calendar" }
+                    val file =
+                        FileKit.openFileSaver(suggestedName = name, defaultExtension = "ics")
+                            ?: return@launch
+                    file.writeString(text)
+                    // One event per UID: a series and its changed occurrences count once
+                    val events =
+                        Regex("(?m)^UID:(.*)$")
+                            .findAll(text)
+                            .map { it.groupValues[1].trim() }
+                            .toSet()
+                            .size
+                    getString(Res.string.export_done, events, file.name)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    getString(Res.string.export_failed, e.message ?: e::class.simpleName.orEmpty())
+                }
+        }
+    }
+
+    fun closeExport() {
+        export.value = null
     }
 
     fun deleteCategory(name: String) {

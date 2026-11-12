@@ -21,11 +21,13 @@ import com.shub39.grit.caldav.RemoteItem
 import com.shub39.grit.caldav.ical.EventDraft
 import com.shub39.grit.caldav.ical.EventInfo
 import com.shub39.grit.caldav.ical.EventResource
+import com.shub39.grit.caldav.ical.IcsExport
 import com.shub39.grit.calendar.data.db.AccountEntity
 import com.shub39.grit.calendar.data.db.AlarmEntity
 import com.shub39.grit.calendar.data.db.CalendarDao
 import com.shub39.grit.calendar.data.db.CalendarDatabase
 import com.shub39.grit.calendar.data.db.CategoryEntity
+import com.shub39.grit.calendar.data.db.CategoryUse
 import com.shub39.grit.calendar.data.db.CollectionEntity
 import com.shub39.grit.calendar.data.db.ConflictEntity
 import com.shub39.grit.calendar.data.db.EventEntity
@@ -153,6 +155,42 @@ class CalendarStore(private val db: CalendarDatabase) {
             saveLocal(event, resource.withCategory(name, color, clock.now()), notify = false)
         }
         _localChanges.tryEmit(Unit)
+    }
+
+    /** The calendars that hold events of each category, by category name. */
+    fun categoryUsesFlow(): Flow<Map<String, List<CategoryUse>>> =
+        dao.categoryUsesFlow().map { uses -> uses.groupBy { it.category } }
+
+    /**
+     * Renames a category and gives it [color], in the events that the user may change, so that the
+     * people who share these calendars see the new name too. A category that already has the new
+     * name becomes one with it. Events in read-only calendars keep the former name, and so does the
+     * former category while such events exist.
+     */
+    suspend fun renameCategory(oldName: String, newName: String, color: String) {
+        val name = newName.trim()
+        if (name.isEmpty()) return
+        if (name == oldName) {
+            setCategoryColor(oldName, color)
+            return
+        }
+        dao.upsertCategory(CategoryEntity(name, color))
+        for (event in dao.writableEventsWithCategory(oldName)) {
+            val resource = parseOrNull(event.ics) ?: continue
+            saveLocal(event, resource.withCategory(name, color, clock.now()), notify = false)
+        }
+        if (dao.countEventsWithCategory(oldName) == 0) dao.deleteCategory(oldName)
+        _localChanges.tryEmit(Unit)
+    }
+
+    /**
+     * The events of a calendar as one .ics file, for other calendar apps. Events deleted on this
+     * device and not yet on the server are left out.
+     */
+    suspend fun exportIcs(collectionId: Long): String {
+        val calendar = dao.collection(collectionId)
+        val events = dao.eventsOf(collectionId).filter { !it.deleted }
+        return IcsExport.join(events.map { it.ics }, calendar?.displayName)
     }
 
     /** Deletes a category and removes it from the events that the user may change. */

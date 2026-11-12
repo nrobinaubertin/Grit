@@ -26,6 +26,9 @@ import kotlinx.coroutines.flow.Flow
 /** An href and its ETag. */
 data class HrefEtag(val href: String, val etag: String?)
 
+/** How many events of a category a calendar holds. */
+data class CategoryUse(val category: String, val calendar: String?, val events: Int)
+
 /** An instance with the display data of its calendar. */
 data class InstanceRow(
     val id: Long,
@@ -222,6 +225,21 @@ interface CalendarDao {
 
     @Query("SELECT * FROM event WHERE category IS NULL AND deleted = 0")
     suspend fun eventsWithoutCategory(): List<EventEntity>
+
+    /** The calendars that hold events of each category. */
+    @Query(
+        """
+        SELECT e.category AS category, c.displayName AS calendar, COUNT(*) AS events
+        FROM event e JOIN collection c ON c.id = e.collectionId
+        WHERE e.category IS NOT NULL AND e.deleted = 0
+        GROUP BY e.category, c.id
+        ORDER BY c.displayName COLLATE NOCASE
+        """
+    )
+    fun categoryUsesFlow(): Flow<List<CategoryUse>>
+
+    @Query("SELECT COUNT(*) FROM event WHERE category = :name AND deleted = 0")
+    suspend fun countEventsWithCategory(name: String): Int
 
     // --- conflicts and settings ---
 
