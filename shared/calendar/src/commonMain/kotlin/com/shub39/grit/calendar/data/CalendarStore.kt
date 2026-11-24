@@ -212,6 +212,21 @@ class CalendarStore(private val db: CalendarDatabase) {
         _localChanges.tryEmit(Unit)
     }
 
+    /**
+     * The categories whose events give no reminders. This choice stays on this device: each person
+     * who shares a calendar chooses for themselves.
+     */
+    fun quietCategoriesFlow(): Flow<Set<String>> =
+        dao.valuesFlow(QUIET_CATEGORY)
+            .map { rows -> rows.map { it.key.removePrefix(QUIET_CATEGORY) }.toSet() }
+            .distinctUntilChanged()
+
+    /** Turns the reminders of the events of category [name] on or off. */
+    suspend fun setCategoryReminders(name: String, on: Boolean) {
+        if (on) dao.deleteValue(QUIET_CATEGORY + name)
+        else dao.putValue(KeyValueEntity(QUIET_CATEGORY + name, 1))
+    }
+
     /** The calendars that hold events of each category, by category name. */
     fun categoryUsesFlow(): Flow<Map<String, List<CategoryUse>>> =
         dao.categoryUsesFlow().map { uses -> uses.groupBy { it.category } }
@@ -234,7 +249,14 @@ class CalendarStore(private val db: CalendarDatabase) {
             val resource = parseOrNull(event.ics) ?: continue
             saveLocal(event, resource.withCategory(name, color, clock.now()), notify = false)
         }
-        if (dao.countEventsWithCategory(oldName) == 0) dao.deleteCategory(oldName)
+        // A category without reminders keeps that choice under its new name
+        if (dao.getValue(QUIET_CATEGORY + oldName) != null) {
+            dao.putValue(KeyValueEntity(QUIET_CATEGORY + name, 1))
+        }
+        if (dao.countEventsWithCategory(oldName) == 0) {
+            dao.deleteCategory(oldName)
+            dao.deleteValue(QUIET_CATEGORY + oldName)
+        }
         _localChanges.tryEmit(Unit)
     }
 
@@ -255,6 +277,7 @@ class CalendarStore(private val db: CalendarDatabase) {
             saveLocal(event, resource.withCategory(null, null, clock.now()), notify = false)
         }
         dao.deleteCategory(name)
+        dao.deleteValue(QUIET_CATEGORY + name)
         _localChanges.tryEmit(Unit)
     }
 
@@ -548,16 +571,52 @@ class CalendarStore(private val db: CalendarDatabase) {
     }
 
     /**
-     * Moves an event, with its changed occurrences, to the calendar [collectionId]. The event goes
-     * into that calendar with its UID, and leaves its former calendar like a deleted event. On a
-     * server, the next sync uploads it to its new calendar and deletes it from the former one.
-     * Returns the id of the moved event.
+     * The copies of an event: the events with its UID in all calendars, itself included. One event
+     * can be in several calendars, for example a personal one and a shared one.
      */
-    suspend fun moveEvent(eventId: Long, collectionId: Long): Long {
+    suspend fun copies(eventId: Long): List<EventEntity> {
+        val event = dao.event(eventId) ?: return emptyList()
+        return dao.eventsWithUid(event.uid)
+    }
+
+    /**
+     * Saves an edit of an event and puts it in the calendars [calendarIds]. Every copy of the event
+     * in a calendar of [calendarIds] gets [draft]. The event goes into the calendars of
+     * [calendarIds] that do not hold it yet, and leaves the calendars outside [calendarIds] that
+     * the user can write to. Copies in read-only calendars stay as they are.
+     */
+    suspend fun saveEvent(eventId: Long, draft: EventDraft, calendarIds: Set<Long>) {
+        val event = dao.event(eventId) ?: return
+        val copies = dao.eventsWithUid(event.uid).ifEmpty { listOf(event) }
+        val writable = copies.filter { dao.collection(it.collectionId)?.canWrite == true }
+        val kept = writable.filter { it.collectionId in calendarIds }
+        for (copy in kept) updateEvent(copy.id, draft)
+        // New copies start from the edited event
+        val source =
+            kept.firstOrNull()?.id
+                ?: writable.firstOrNull()?.id?.also { updateEvent(it, draft) }
+                ?: return
+        val held = copies.map { it.collectionId }.toSet()
+        for (id in calendarIds - held) copyEvent(source, id)
+        for (copy in writable) if (copy.collectionId !in calendarIds) deleteEvent(copy.id)
+    }
+
+    /**
+     * Puts a copy of an event, with its UID and its changed occurrences, into the calendar
+     * [collectionId]. On a server, the next sync uploads it. Returns the id of the copy.
+     */
+    suspend fun copyEvent(eventId: Long, collectionId: Long): Long {
         val event = dao.event(eventId) ?: return eventId
         if (event.collectionId == collectionId) return eventId
         val target = dao.collection(collectionId) ?: error("Unknown calendar $collectionId")
-        val moved =
+        val existing = dao.eventByUid(collectionId, event.uid)
+        if (existing != null) {
+            // A copy that waits for its deletion on the server comes back and takes the new
+            // content, so that the server never holds two events with one UID
+            saveLocal(existing.copy(deleted = false), EventResource.parse(event.ics))
+            return existing.id
+        }
+        val copy =
             event.copy(
                 id = 0,
                 collectionId = collectionId,
@@ -571,9 +630,21 @@ class CalendarStore(private val db: CalendarDatabase) {
                 existsOnServer = false,
                 syncError = null,
             )
-        val id = dao.insertEvent(moved)
-        expand(moved.copy(id = id))
-        deleteEvent(eventId)
+        val id = dao.insertEvent(copy)
+        expand(copy.copy(id = id))
+        _localChanges.tryEmit(Unit)
+        return id
+    }
+
+    /**
+     * Moves an event, with its changed occurrences, to the calendar [collectionId]. The event goes
+     * into that calendar with its UID, and leaves its former calendar like a deleted event. On a
+     * server, the next sync uploads it to its new calendar and deletes it from the former one.
+     * Returns the id of the moved event.
+     */
+    suspend fun moveEvent(eventId: Long, collectionId: Long): Long {
+        val id = copyEvent(eventId, collectionId)
+        if (id != eventId) deleteEvent(eventId)
         return id
     }
 
@@ -585,6 +656,19 @@ class CalendarStore(private val db: CalendarDatabase) {
                 .excludeOccurrence(Instant.fromEpochMilliseconds(originalStart), zone, clock.now())
         saveLocal(event, resource)
     }
+
+    /** Deletes an event from every calendar that holds it and that the user can write to. */
+    suspend fun deleteEverywhere(eventId: Long) {
+        for (copy in writableCopies(eventId)) deleteEvent(copy.id)
+    }
+
+    /** Removes one occurrence of a repeating event, in every copy that the user can write to. */
+    suspend fun deleteOccurrenceEverywhere(eventId: Long, originalStart: Long) {
+        for (copy in writableCopies(eventId)) deleteOccurrence(copy.id, originalStart)
+    }
+
+    private suspend fun writableCopies(eventId: Long): List<EventEntity> =
+        copies(eventId).filter { dao.collection(it.collectionId)?.canWrite == true }
 
     suspend fun deleteEvent(eventId: Long) {
         val event = dao.event(eventId) ?: return
@@ -638,6 +722,12 @@ class CalendarStore(private val db: CalendarDatabase) {
 
         /** kv key prefix, followed by the calendar id. The value is the place of its chip. */
         private const val CHIP_ORDER = "calendar-order:"
+
+        /**
+         * kv key prefix, followed by a category name: the events of that category give no
+         * reminders. The alarm queries of [CalendarDao] use this prefix too.
+         */
+        const val QUIET_CATEGORY = "category-quiet:"
 
         /** kv key prefix, followed by the calendar id. The value is a [CalendarPattern] ordinal. */
         private const val PATTERN = "calendar-pattern:"

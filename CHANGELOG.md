@@ -1,5 +1,12 @@
 # Changelog
 
+## 7.12.0
+- An event can be in several calendars: tick them in the editor. The calendars show it once, and an edit or a delete changes every copy
+- Turn off the reminders of the events of a category with the bell next to the category, in the calendar settings. This choice stays on this phone
+- The calendar syncs in the background without a spinner. The new refresh button in the top bar syncs at once
+- The delete button of the tasks also removes the done subtasks
+- The last task scrolls up above the add button
+
 ## 7.11.0
 - The week view looks like a paper planner: two columns with one cell per day and its events, and an overview of the hours of the week in the eighth cell. Tap beside the events of a day, or on a free hour of the overview, to create an event
 - In the month view, an event is lower in its day for a later time, the days of the months before and after are darker, and today stands out

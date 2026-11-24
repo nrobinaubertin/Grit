@@ -33,10 +33,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -101,6 +104,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.shub39.grit.core.tasks.Category
 import com.shub39.grit.core.tasks.CategoryColors
@@ -165,6 +169,15 @@ private class CategoryDrop(private val slop: Float) {
         return target
     }
 }
+
+/**
+ * Room below the last task, so that the add button never covers it (calendar fork): the button (80
+ * dp high), its 16 dp margin, a gap of 16 dp, and the navigation bar inset that the button keeps
+ * above the bottom too.
+ */
+private val fabClearance: Dp
+    @Composable
+    get() = 112.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
 sealed interface ShowTaskUpsertSheet {
     data object Add : ShowTaskUpsertSheet
@@ -471,14 +484,14 @@ private fun TaskListTopBar(
         title = { Text(text = stringResource(Res.string.tasks), fontFamily = flexFontEmphasis()) },
         subtitle = {
             Text(
-                text = "${state.completedTasks.size} " + stringResource(Res.string.items_completed),
+                text = "${state.completedCount} " + stringResource(Res.string.items_completed),
                 fontFamily = flexFontRounded(),
             )
         },
         actions = {
             val motionScheme = MaterialTheme.motionScheme
             AnimatedVisibility(
-                visible = state.completedTasks.isNotEmpty(),
+                visible = state.completedCount > 0,
                 enter = fadeIn(motionScheme.fastEffectsSpec()),
                 exit = fadeOut(motionScheme.fastEffectsSpec()),
             ) {
@@ -645,7 +658,10 @@ private fun CompactTasksView(
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     state = lazyListState,
-                    contentPadding = PaddingValues(8.dp),
+                    // Room below the last task, so that it scrolls up above the add button
+                    // (calendar fork)
+                    contentPadding =
+                        PaddingValues(start = 8.dp, top = 8.dp, end = 8.dp, bottom = fabClearance),
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
                     itemsIndexed(items = reorderableTasks, key = { _, it -> it.task.id }) {
@@ -867,7 +883,7 @@ private fun ExpandedTasksView(
 
     LazyVerticalStaggeredGrid(
         columns = StaggeredGridCells.Adaptive(minSize = 350.dp),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 60.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = fabClearance),
         verticalItemSpacing = 8.dp,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.fillMaxSize(),

@@ -73,7 +73,17 @@ actual class ReminderScheduler(private val context: Context, db: CalendarDatabas
     suspend fun fire(paused: Boolean) {
         val now = System.currentTimeMillis()
         val watermark = dao.getValue(WATERMARK) ?: (now - MAX_LATE_MS)
-        if (!paused) dao.alarmsBetween(watermark, now).forEach { notify(it) }
+        if (!paused) {
+            val due = dao.alarmsBetween(watermark, now)
+            val uids =
+                if (due.isEmpty()) emptyMap()
+                else dao.uids(due.map { it.eventId }.distinct()).associate { it.id to it.uid }
+            // The copies of an event in several calendars remind once
+            due.distinctBy {
+                    Triple(uids[it.eventId] ?: "#${it.eventId}", it.instanceBegin, it.triggerAt)
+                }
+                .forEach { notify(it) }
+        }
         dao.putValue(KeyValueEntity(WATERMARK, now))
         reschedule()
     }

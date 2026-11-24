@@ -140,6 +140,7 @@ fun AccountScreen(
                     onNew = { newCategory = true },
                     onEdit = { editCategory = it },
                     onDelete = { deleteCategory = it },
+                    onReminders = viewModel::setCategoryReminders,
                 )
                 item { SectionTitle(stringResource(Res.string.caldav_server)) }
                 item { SyncServerLink(state, onOpenSync) }
@@ -647,6 +648,7 @@ private fun LazyListScope.categorySection(
     onNew: () -> Unit,
     onEdit: (CategoryEntity) -> Unit,
     onDelete: (CategoryEntity) -> Unit,
+    onReminders: (name: String, on: Boolean) -> Unit,
 ) {
     item {
         Column {
@@ -668,12 +670,33 @@ private fun LazyListScope.categorySection(
                         .padding(start = 16.dp, top = 4.dp, bottom = 4.dp, end = 4.dp),
             ) {
                 ColorDot(CategoryColors.argb(category.color))
+                val quiet = category.name in state.quietCategories
                 Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
                     Text(category.name, style = MaterialTheme.typography.bodyLarge)
                     Text(
-                        usesText(state.categoryUses[category.name].orEmpty()),
+                        listOfNotNull(
+                                usesText(state.categoryUses[category.name].orEmpty()),
+                                if (quiet) stringResource(Res.string.category_reminders_muted)
+                                else null,
+                            )
+                            .joinToString(" · "),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                // Reminders of the events of this category, on this device only
+                IconButton(onClick = { onReminders(category.name, quiet) }) {
+                    Icon(
+                        vectorResource(
+                            if (quiet) Res.drawable.notifications_off
+                            else Res.drawable.notifications
+                        ),
+                        contentDescription =
+                            stringResource(
+                                if (quiet) Res.string.category_reminders_off
+                                else Res.string.category_reminders_on,
+                                category.name,
+                            ),
                     )
                 }
                 IconButton(onClick = { onDelete(category) }) {

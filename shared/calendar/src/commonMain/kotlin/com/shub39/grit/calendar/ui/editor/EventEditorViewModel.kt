@@ -88,7 +88,8 @@ data class EditorState(
     val customRule: String? = null,
     val reminders: Set<Int> = emptySet(),
     val calendars: List<CalendarOption> = emptyList(),
-    val calendarId: Long? = null,
+    /** The calendars that hold the event. One event can be in several calendars. */
+    val calendarIds: Set<Long> = emptySet(),
     val category: String? = null,
     val categories: List<CategoryOption> = emptyList(),
     val hasExceptions: Boolean = false,
@@ -111,8 +112,6 @@ class EventEditorViewModel(
     /** The times as loaded, so that unchanged times keep their exact iCalendar form. */
     private var original: Pair<IcalTime, IcalTime>? = null
     private var originalFields: EditorState? = null
-    /** The calendar of the event as loaded: another choice moves the event on save. */
-    private var originalCalendarId: Long? = null
 
     fun load(eventId: Long?, date: LocalDate?, hour: Int? = null) {
         if (loaded) return
@@ -168,7 +167,8 @@ class EventEditorViewModel(
                 _state.update {
                     it.copy(
                         calendars = writable,
-                        calendarId = it.calendarId ?: writable.firstOrNull()?.id,
+                        calendarIds =
+                            it.calendarIds.ifEmpty { setOfNotNull(writable.firstOrNull()?.id) },
                         is24Hr = is24Hr,
                         error = if (writable.isEmpty()) EditorError.NoCalendar else it.error,
                     )
@@ -178,14 +178,18 @@ class EventEditorViewModel(
             val details = store.details(eventId) ?: return@launch
             val info = details.info
             original = info.start to info.end
-            originalCalendarId = details.collection.id
-            // The event can move to any calendar that the user can write to
+            // The calendars that hold a copy of the event (same UID), and that the user can write
+            // to. Copies in read-only calendars stay as they are.
+            val collections = store.collectionsFlow().first()
+            val held = store.copies(eventId).map { it.collectionId }.toSet() + details.collection.id
+            val writableHeld =
+                collections.filter { it.id in held && it.canWrite }.map { it.id }.toSet()
+            // The event can go into any calendar that the user can write to
             val calendars =
-                store
-                    .collectionsFlow()
-                    .first()
+                collections
                     .filter {
                         it.id == details.collection.id ||
+                            it.id in writableHeld ||
                             (it.canWrite && it.supportsEvents && it.visible)
                     }
                     .map { CalendarOption(it.id, it.displayName ?: it.url) }
@@ -234,13 +238,23 @@ class EventEditorViewModel(
                     customRule = info.rrule.takeIf { repeat == RepeatChoice.Custom },
                     reminders = info.reminderMinutes.toSet(),
                     calendars = calendars,
-                    calendarId = details.collection.id,
+                    calendarIds = writableHeld.ifEmpty { setOf(details.collection.id) },
                     category = info.category,
                     categories = _state.value.categories,
                     hasExceptions = info.hasExceptions,
                     is24Hr = is24Hr,
                 )
             originalFields = _state.value
+        }
+    }
+
+    /** Puts the event into calendar [id], or takes it out. At least one calendar stays. */
+    fun toggleCalendar(id: Long) = update { state ->
+        val ids = state.calendarIds
+        when {
+            id !in ids -> state.copy(calendarIds = ids + id)
+            ids.size > 1 -> state.copy(calendarIds = ids - id)
+            else -> state
         }
     }
 
@@ -267,8 +281,9 @@ class EventEditorViewModel(
         val state = _state.value
         if (state.title.isBlank())
             return _state.update { it.copy(error = EditorError.TitleRequired) }
-        val calendarId =
-            state.calendarId ?: return _state.update { it.copy(error = EditorError.NoCalendar) }
+        // In the order of the list, so that a new event goes first into the first calendar
+        val calendarIds = state.calendars.map { it.id }.filter { it in state.calendarIds }
+        if (calendarIds.isEmpty()) return _state.update { it.copy(error = EditorError.NoCalendar) }
         val (start, end) = times(state)
         val startInstant = start.toInstant(ZoneId.systemDefault()).toJavaInstant()
         val endInstant = end.toInstant(ZoneId.systemDefault()).toJavaInstant()
@@ -297,10 +312,10 @@ class EventEditorViewModel(
             try {
                 val id = eventId
                 if (id == null) {
-                    store.createEvent(calendarId, draft)
+                    val created = store.createEvent(calendarIds.first(), draft)
+                    for (other in calendarIds.drop(1)) store.copyEvent(created, other)
                 } else {
-                    store.updateEvent(id, draft)
-                    if (calendarId != originalCalendarId) store.moveEvent(id, calendarId)
+                    store.saveEvent(id, draft, calendarIds.toSet())
                 }
                 _state.update { it.copy(saving = false, saved = true) }
             } catch (_: Exception) {

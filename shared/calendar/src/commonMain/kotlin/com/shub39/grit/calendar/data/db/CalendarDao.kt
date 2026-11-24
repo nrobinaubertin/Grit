@@ -26,6 +26,9 @@ import kotlinx.coroutines.flow.Flow
 /** An href and its ETag. */
 data class HrefEtag(val href: String, val etag: String?)
 
+/** An event id and its UID. */
+data class EventUid(val id: Long, val uid: String)
+
 /** How many events of a category a calendar holds. */
 data class CategoryUse(val category: String, val calendar: String?, val events: Int)
 
@@ -34,6 +37,8 @@ data class InstanceRow(
     val id: Long,
     val eventId: Long,
     val collectionId: Long,
+    /** The iCalendar UID: copies of an event in several calendars share it. */
+    val uid: String,
     val begin: Long,
     val end: Long,
     val allDay: Boolean,
@@ -117,6 +122,10 @@ interface CalendarDao {
     @Query("SELECT * FROM event WHERE collectionId = :collectionId AND deleted = 0 ORDER BY id")
     suspend fun eventsOf(collectionId: Long): List<EventEntity>
 
+    /** The copies of an event in all calendars: the events with the UID [uid]. */
+    @Query("SELECT * FROM event WHERE uid = :uid AND deleted = 0 ORDER BY id")
+    suspend fun eventsWithUid(uid: String): List<EventEntity>
+
     @Query("SELECT * FROM event WHERE collectionId = :collectionId AND dirty = 1")
     suspend fun pendingEvents(collectionId: Long): List<EventEntity>
 
@@ -160,7 +169,7 @@ interface CalendarDao {
 
     @Query(
         """
-        SELECT i.id, i.eventId, i.collectionId, i.begin, i.`end`, i.allDay, i.originalStart,
+        SELECT i.id, i.eventId, i.collectionId, e.uid, i.begin, i.`end`, i.allDay, i.originalStart,
             i.title, i.location, e.category, cat.color AS categoryColor,
             c.displayName AS calendarName, c.canWrite, e.recurring
         FROM instance i
@@ -186,10 +195,15 @@ interface CalendarDao {
         JOIN event e ON e.id = a.eventId
         JOIN collection c ON c.id = e.collectionId
         WHERE c.visible = 1 AND e.deleted = 0 AND a.triggerAt > :after
+            AND NOT EXISTS (SELECT 1 FROM kv WHERE kv.`key` = 'category-quiet:' || e.category)
         ORDER BY a.triggerAt LIMIT 1
         """
     )
     suspend fun nextAlarm(after: Long): AlarmEntity?
+
+    /** The UID of each event in [ids], so that copies of an event remind once. */
+    @Query("SELECT id, uid FROM event WHERE id IN (:ids)")
+    suspend fun uids(ids: List<Long>): List<EventUid>
 
     @Query(
         """
@@ -197,6 +211,7 @@ interface CalendarDao {
         JOIN event e ON e.id = a.eventId
         JOIN collection c ON c.id = e.collectionId
         WHERE c.visible = 1 AND e.deleted = 0 AND a.triggerAt > :after AND a.triggerAt <= :until
+            AND NOT EXISTS (SELECT 1 FROM kv WHERE kv.`key` = 'category-quiet:' || e.category)
         ORDER BY a.triggerAt
         """
     )

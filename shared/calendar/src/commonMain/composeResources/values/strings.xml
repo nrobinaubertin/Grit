@@ -172,4 +172,9 @@
     <string name="pattern_dotted">Dotted</string>
     <string name="pattern_crossed">Cross-hatched</string>
     <string name="tasks_chip">Tasks</string>
+    <string name="refresh">Sync with the server</string>
+    <string name="category_reminders_on">Reminders on for the events of %1$s</string>
+    <string name="category_reminders_off">No reminders for the events of %1$s</string>
+    <string name="category_reminders_muted">No reminders</string>
+    <string name="event_calendars">Calendars</string>
 </resources>

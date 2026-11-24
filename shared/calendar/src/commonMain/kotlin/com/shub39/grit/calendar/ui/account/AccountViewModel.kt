@@ -88,6 +88,8 @@ data class AccountState(
     val categories: List<CategoryEntity> = emptyList(),
     /** The calendars that hold events of each category, by category name. */
     val categoryUses: Map<String, List<CategoryUse>> = emptyMap(),
+    /** The categories whose events give no reminders on this device. */
+    val quietCategories: Set<String> = emptySet(),
     /** The pattern of each calendar, by calendar id. */
     val patterns: Map<Long, CalendarPattern> = emptyMap(),
     /** False on desktop, which has no calendars of other apps. */
@@ -204,13 +206,18 @@ class AccountViewModel(
         combine(
                 store.accountsFlow(),
                 combine(store.collectionsFlow(), store.patternsFlow(), ::Pair),
-                combine(store.categoriesFlow(), store.categoryUsesFlow(), ::Pair),
+                combine(
+                    store.categoriesFlow(),
+                    store.categoryUsesFlow(),
+                    store.quietCategoriesFlow(),
+                    ::Triple,
+                ),
                 combine(syncManager.running, form, store.defaultViewFlow(), ::Triple),
                 combine(phoneTick.flatMapLatest { phone.calendars() }, tasks, ::Pair),
             ) {
                 accounts,
                 (collections, patterns),
-                (categories, categoryUses),
+                (categories, categoryUses, quietCategories),
                 (running, form, defaultView),
                 (phoneCalendars, tasks) ->
                 val account = accounts.firstOrNull { !it.local }
@@ -221,6 +228,7 @@ class AccountViewModel(
                     localCalendars = collections.filter { it.accountId == local?.id },
                     categories = categories,
                     categoryUses = categoryUses,
+                    quietCategories = quietCategories,
                     patterns = patterns,
                     phoneSupported = phone.supported,
                     phonePermission = phone.hasPermission(),
@@ -516,6 +524,11 @@ class AccountViewModel(
 
     fun closeExport() {
         export.value = null
+    }
+
+    /** Turns the reminders of the events of a category on or off, on this device. */
+    fun setCategoryReminders(name: String, on: Boolean) {
+        viewModelScope.launch { syncManager.setCategoryReminders(name, on) }
     }
 
     fun deleteCategory(name: String) {

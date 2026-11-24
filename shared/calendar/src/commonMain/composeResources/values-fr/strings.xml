@@ -172,4 +172,9 @@
     <string name="pattern_dotted">Pointillés</string>
     <string name="pattern_crossed">Quadrillé</string>
     <string name="tasks_chip">Tâches</string>
+    <string name="refresh">Synchroniser avec le serveur</string>
+    <string name="category_reminders_on">Rappels activés pour les événements de %1$s</string>
+    <string name="category_reminders_off">Aucun rappel pour les événements de %1$s</string>
+    <string name="category_reminders_muted">Sans rappels</string>
+    <string name="event_calendars">Calendriers</string>
 </resources>

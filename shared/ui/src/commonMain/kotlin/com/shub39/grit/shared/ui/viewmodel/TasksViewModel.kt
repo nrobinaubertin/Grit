@@ -239,7 +239,18 @@ class TasksViewModel(
             viewModelScope.launch {
                 combine(repo.getTasksFlow(), repo.getCompletedTasksFlow()) { tasks, completedTasks
                         ->
-                        _state.update { it.copy(tasks = tasks, completedTasks = completedTasks) }
+                        // The subtasks of a done task go with it, so only open tasks count
+                        val completedSubTasks =
+                            tasks.values.flatten().flatMap { (task, subTasks) ->
+                                if (task.status) emptyList() else subTasks.filter { it.status }
+                            }
+                        _state.update {
+                            it.copy(
+                                tasks = tasks,
+                                completedTasks = completedTasks,
+                                completedSubTasks = completedSubTasks,
+                            )
+                        }
 
                         if (_state.value.currentCategory == null) {
                             _state.update { it.copy(currentCategory = tasks.keys.firstOrNull()) }
@@ -270,6 +281,12 @@ class TasksViewModel(
                 mapOf("has_reminder" to (task.reminder != null)),
             )
             repo.deleteTask(task)
+        }
+        // Done subtasks of open tasks too (calendar fork)
+        for (subTask in _state.value.completedSubTasks) {
+            analytics.trackEvent(AnalyticsEvent.TASK_SUBTASK_DELETED, emptyMap())
+            repo.deleteSubTask(subTask)
+            scheduler.cancel(subTask)
         }
     }
 

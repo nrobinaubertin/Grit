@@ -55,7 +55,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -124,15 +123,8 @@ fun CalendarHomeScreen(
                             },
                             onConnect = onOpenSync,
                         )
-                    // Pull to refresh only makes sense with a server
-                    state.hasServer ->
-                        PullToRefreshBox(
-                            isRefreshing = state.syncing,
-                            onRefresh = { onAction(CalendarAction.Refresh) },
-                            modifier = Modifier.fillMaxSize(),
-                        ) {
-                            CalendarContent(state, onAction, onCreateEvent)
-                        }
+                    // Sync runs in the background, without a spinner: the refresh button of the
+                    // top bar starts one by hand
                     else -> CalendarContent(state, onAction, onCreateEvent)
                 }
             }
@@ -293,6 +285,15 @@ private fun CalendarTopBar(
             actions = {
                 TextButton(onClick = { onAction(CalendarAction.Today) }) {
                     Text(stringResource(Res.string.today))
+                }
+                // A sync by hand only makes sense with a server
+                if (state.hasServer) {
+                    IconButton(onClick = { onAction(CalendarAction.Refresh) }) {
+                        Icon(
+                            imageVector = vectorResource(Res.drawable.refresh),
+                            contentDescription = stringResource(Res.string.refresh),
+                        )
+                    }
                 }
                 IconButton(onClick = onOpenAccount) {
                     Icon(

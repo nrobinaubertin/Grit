@@ -461,15 +461,16 @@ class CalendarViewModel(
                     local.update { it.copy(details = details) }
                 }
             CalendarAction.CloseEvent -> local.update { it.copy(details = null) }
+            // The views show an event once for all its calendars, so it leaves all of them
             is CalendarAction.DeleteEvent ->
                 viewModelScope.launch {
                     local.update { it.copy(details = null) }
-                    store.deleteEvent(action.eventId)
+                    store.deleteEverywhere(action.eventId)
                 }
             is CalendarAction.DeleteOccurrence ->
                 viewModelScope.launch {
                     local.update { it.copy(details = null) }
-                    store.deleteOccurrence(action.eventId, action.originalStart)
+                    store.deleteOccurrenceEverywhere(action.eventId, action.originalStart)
                 }
             is CalendarAction.SetCalendarVisible ->
                 viewModelScope.launch { syncManager.setVisible(action.id, action.visible) }
@@ -501,10 +502,14 @@ class CalendarViewModel(
             store.ensureWindow(from, to)
             // All-day instances are stored at midnight UTC, so widen the query by one day
             emitAll(
-                combine(store.instances(from - DAY_MS, to + DAY_MS), store.patternsFlow()) {
-                    rows,
-                    patterns ->
-                    rows.map { it.toDayEvent(zone, patterns[it.collectionId]) }
+                combine(
+                    store.instances(from - DAY_MS, to + DAY_MS),
+                    store.patternsFlow(),
+                    store.chipOrderFlow(),
+                ) { rows, patterns, chipOrder ->
+                    rows.withoutCopies(chipOrder).map { (row, calendars) ->
+                        row.toDayEvent(zone, patterns[row.collectionId], calendars)
+                    }
                 }
             )
         }
@@ -556,7 +561,47 @@ private fun coveredDays(
         java.time.Instant.ofEpochMilli(lastMoment).atZone(zone).toLocalDate()
 }
 
-internal fun InstanceRow.toDayEvent(zone: ZoneId, pattern: CalendarPattern? = null): DayEvent {
+/**
+ * One row per occurrence of an event: the copies of an event in several visible calendars (same
+ * UID, same start) show once. The row kept is the one in the first calendar of the chips, a
+ * calendar that the user can write to first. Each row comes with the names of the calendars that
+ * hold it, in the order of the chips.
+ */
+internal fun List<InstanceRow>.withoutCopies(
+    chipOrder: Map<Long, Int>
+): List<Pair<InstanceRow, String?>> {
+    val order =
+        compareBy<InstanceRow>(
+            { !it.canWrite },
+            { chipOrder[it.collectionId] ?: Int.MAX_VALUE },
+            { it.calendarName?.lowercase() },
+            { it.collectionId },
+        )
+    return groupBy { it.uid to it.begin }
+        .values
+        .map { copies ->
+            if (copies.size == 1) copies[0] to copies[0].calendarName
+            else {
+                val names =
+                    copies
+                        .sortedWith(
+                            compareBy(
+                                { chipOrder[it.collectionId] ?: Int.MAX_VALUE },
+                                { it.calendarName?.lowercase() },
+                            )
+                        )
+                        .mapNotNull { it.calendarName }
+                        .distinct()
+                copies.minWith(order) to names.joinToString(", ").ifEmpty { null }
+            }
+        }
+}
+
+internal fun InstanceRow.toDayEvent(
+    zone: ZoneId,
+    pattern: CalendarPattern? = null,
+    calendars: String? = calendarName,
+): DayEvent {
     val (startDay, endDay) = coveredDays(begin, end, allDay, zone)
     return DayEvent(
         instanceId = id,
@@ -572,7 +617,7 @@ internal fun InstanceRow.toDayEvent(zone: ZoneId, pattern: CalendarPattern? = nu
         recurring = recurring,
         category = category,
         color = CategoryColors.argb(categoryColor),
-        calendarName = calendarName,
+        calendarName = calendars,
         canWrite = canWrite,
         pattern = pattern ?: CalendarPattern.Solid,
     )

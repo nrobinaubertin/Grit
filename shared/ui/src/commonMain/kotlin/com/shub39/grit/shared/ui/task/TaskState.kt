@@ -19,6 +19,7 @@ package com.shub39.grit.shared.ui.task
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
 import com.shub39.grit.core.tasks.Category
+import com.shub39.grit.core.tasks.SubTask
 import com.shub39.grit.core.tasks.Task
 import com.shub39.grit.core.tasks.TaskWithSubTasks
 
@@ -28,6 +29,12 @@ data class TaskState(
     val tasks: Map<Category, List<TaskWithSubTasks>> = emptyMap(),
     val currentCategory: Category? = null,
     val completedTasks: List<Task> = emptyList(),
+    /** Done subtasks of open tasks: the delete button removes them too (calendar fork). */
+    val completedSubTasks: List<SubTask> = emptyList(),
     val is24Hour: Boolean = false,
     val reorderTasks: Boolean = true,
-)
+) {
+    /** What the delete button removes: done tasks, and done subtasks of open tasks. */
+    val completedCount: Int
+        get() = completedTasks.size + completedSubTasks.size
+}

@@ -160,7 +160,7 @@ fun EventEditorScreen(
                     )
 
                 if (stage >= 3) {
-                    CalendarRow(state) { id -> viewModel.update { it.copy(calendarId = id) } }
+                    CalendarRow(state, onToggle = viewModel::toggleCalendar)
                     CategoryRow(
                         state = state,
                         onPick = { name -> viewModel.update { it.copy(category = name) } },
@@ -375,26 +375,30 @@ private fun SettingRow(
 }
 
 @Composable
-private fun CalendarRow(state: EditorState, onPick: (Long) -> Unit) {
+private fun CalendarRow(state: EditorState, onToggle: (Long) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
-    val selected = state.calendars.firstOrNull { it.id == state.calendarId }
-    // Another calendar for an existing event moves it there on save
+    val selected = state.calendars.filter { it.id in state.calendarIds }
+    // The event can be in several calendars: the menu stays open while the user ticks them
     val canChoose = state.calendars.size > 1
     Box {
         SettingRow(
-            label = stringResource(Res.string.calendar),
-            value = selected?.name.orEmpty(),
+            label =
+                stringResource(
+                    if (selected.size > 1) Res.string.event_calendars else Res.string.calendar
+                ),
+            value = selected.joinToString(", ") { it.name },
             onClick = { if (canChoose) expanded = true },
         )
         if (expanded) {
             DropdownMenu(expanded = true, onDismissRequest = { expanded = false }) {
                 for (option in state.calendars) {
+                    val checked = option.id in state.calendarIds
                     DropdownMenuItem(
                         text = { Text(option.name) },
-                        onClick = {
-                            onPick(option.id)
-                            expanded = false
+                        leadingIcon = {
+                            Checkbox(checked = checked, onCheckedChange = { onToggle(option.id) })
                         },
+                        onClick = { onToggle(option.id) },
                     )
                 }
             }

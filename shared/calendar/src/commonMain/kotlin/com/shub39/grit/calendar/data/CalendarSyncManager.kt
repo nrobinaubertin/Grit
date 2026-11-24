@@ -476,6 +476,12 @@ class CalendarSyncManager(
         }
     }
 
+    /** Turns the reminders of the events of category [name] on or off, on this device. */
+    suspend fun setCategoryReminders(name: String, on: Boolean) {
+        store.setCategoryReminders(name, on)
+        reminders.reschedule()
+    }
+
     /** Syncs every calendar of every account. Errors are stored on the account and calendar. */
     suspend fun syncAll() {
         mutex.withLock {

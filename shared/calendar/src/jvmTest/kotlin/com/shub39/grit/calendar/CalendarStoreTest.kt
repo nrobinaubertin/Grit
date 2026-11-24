@@ -26,6 +26,7 @@ import com.shub39.grit.calendar.data.EventCollection
 import com.shub39.grit.calendar.data.db.AccountEntity
 import com.shub39.grit.calendar.data.db.CalendarDatabase
 import com.shub39.grit.calendar.data.db.CollectionEntity
+import com.shub39.grit.calendar.ui.home.withoutCopies
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -91,14 +92,142 @@ class CalendarStoreTest {
             dao.instancesFlow(0, Long.MAX_VALUE).first().map { it.eventId },
         )
 
-        // And back: a new event to upload, and the copy on this device is gone
+        // And back before a sync: the server copy that waited for its deletion comes back as an
+        // edit, so that the server never holds two events with one UID
         val back = store.moveEvent(onDevice, server)
+        assertEquals(event.id, back)
         val uploaded = dao.event(back)!!
         assertEquals(server, uploaded.collectionId)
         assertTrue(uploaded.dirty)
-        assertFalse(uploaded.existsOnServer)
-        assertTrue(uploaded.href.startsWith("https://dav/u/cal/"))
+        assertFalse(uploaded.deleted)
+        assertTrue(uploaded.existsOnServer)
+        assertEquals("https://dav/u/cal/run.ics", uploaded.href)
         assertEquals(null, dao.event(onDevice))
+
+        // And to a new calendar: a new event to upload
+        val other =
+            dao.insertCollection(
+                CollectionEntity(
+                    accountId = dao.collection(server)!!.accountId,
+                    url = "https://dav/u/other/",
+                    displayName = "Other",
+                )
+            )
+        val elsewhere = dao.event(store.moveEvent(back, other))!!
+        assertTrue(elsewhere.dirty)
+        assertFalse(elsewhere.existsOnServer)
+        assertTrue(elsewhere.href.startsWith("https://dav/u/other/"))
+        assertTrue(dao.event(back)!!.deleted)
+    }
+
+    private val draft =
+        EventDraft(
+            summary = "Dinner",
+            start = IcalTime.Zoned(LocalDateTime(2026, 11, 20, 19, 0), "Europe/Paris"),
+            end = IcalTime.Zoned(LocalDateTime(2026, 11, 20, 21, 0), "Europe/Paris"),
+        )
+
+    @Test
+    fun `an event can be in several calendars and its copies change together`() = runBlocking {
+        val shared = collection()
+        val mine = store.createLocalCalendar("Mine")
+        val id = store.createEvent(shared, draft)
+
+        // Into a second calendar: a copy with the same UID
+        store.saveEvent(id, draft, setOf(shared, mine))
+        val copies = store.copies(id)
+        assertEquals(setOf(shared, mine), copies.map { it.collectionId }.toSet())
+        assertEquals(1, copies.map { it.uid }.distinct().size)
+        val rows = instances("2026-11-20T00:00:00Z", "2026-11-21T00:00:00Z")
+        assertEquals(2, rows.size)
+        assertEquals(1, rows.withoutCopies(emptyMap()).size)
+
+        // An edit changes every copy
+        store.saveEvent(id, draft.copy(summary = "Dinner at home"), setOf(shared, mine))
+        assertEquals(
+            listOf("Dinner at home", "Dinner at home"),
+            instances("2026-11-20T00:00:00Z", "2026-11-21T00:00:00Z").map { it.title },
+        )
+
+        // Out of the shared calendar: only the copy on this device stays
+        store.saveEvent(id, draft, setOf(mine))
+        val left = instances("2026-11-20T00:00:00Z", "2026-11-21T00:00:00Z").single()
+        assertEquals(mine, left.collectionId)
+        // It never reached the server, so nothing waits for a deletion there
+        assertEquals(null, dao.event(id))
+
+        // A delete from the views removes every copy
+        store.saveEvent(left.eventId, draft, setOf(shared, mine))
+        assertEquals(2, instances("2026-11-20T00:00:00Z", "2026-11-21T00:00:00Z").size)
+        store.deleteEverywhere(left.eventId)
+        assertTrue(instances("2026-11-20T00:00:00Z", "2026-11-21T00:00:00Z").isEmpty())
+    }
+
+    @Test
+    fun `copies show once, in the first calendar of the chips`() = runBlocking {
+        val shared = collection()
+        val mine = store.createLocalCalendar("Mine")
+        val id = store.createEvent(shared, draft)
+        store.copyEvent(id, mine)
+        store.createEvent(mine, draft.copy(summary = "Other"))
+        val rows = instances("2026-11-20T00:00:00Z", "2026-11-21T00:00:00Z")
+        assertEquals(3, rows.size)
+
+        val byName = rows.withoutCopies(emptyMap())
+        assertEquals(2, byName.size)
+        val (dinner, calendars) = byName.first { it.first.title == "Dinner" }
+        // "Cal" before "Mine" by name, until the user orders the chips
+        assertEquals(shared, dinner.collectionId)
+        assertEquals("Cal, Mine", calendars)
+
+        val (first, ordered) =
+            rows.withoutCopies(mapOf(mine to 0, shared to 1)).first { it.first.title == "Dinner" }
+        assertEquals(mine, first.collectionId)
+        assertEquals("Mine, Cal", ordered)
+    }
+
+    @Test
+    fun `events of a quiet category give no reminders`() = runBlocking {
+        val collectionId = collection()
+        store.applyRemote(
+            collectionId,
+            listOf(
+                RemoteItem(
+                    "https://dav/u/cal/gym.ics",
+                    "\"1\"",
+                    ics(
+                        "gym",
+                        """
+                        DTSTART:20261116T080000Z
+                        DTEND:20261116T090000Z
+                        SUMMARY:Gym
+                        CATEGORIES:Sport
+                        BEGIN:VALARM
+                        ACTION:DISPLAY
+                        TRIGGER:-PT10M
+                        DESCRIPTION:x
+                        END:VALARM
+                        """,
+                    ),
+                )
+            ),
+        )
+        val after = now.toEpochMilliseconds()
+        assertEquals("Gym", dao.nextAlarm(after)?.title)
+
+        store.setCategoryReminders("Sport", on = false)
+        assertEquals(setOf("Sport"), store.quietCategoriesFlow().first())
+        assertEquals(null, dao.nextAlarm(after))
+        assertTrue(dao.alarmsBetween(after, Long.MAX_VALUE).isEmpty())
+
+        // The choice follows a rename
+        store.renameCategory("Sport", "Fitness", "red")
+        assertEquals(setOf("Fitness"), store.quietCategoriesFlow().first())
+        assertEquals(null, dao.nextAlarm(after))
+
+        store.setCategoryReminders("Fitness", on = true)
+        assertEquals(emptySet(), store.quietCategoriesFlow().first())
+        assertEquals("Gym", dao.nextAlarm(after)?.title)
     }
 
     @Test
