@@ -378,8 +378,8 @@ private fun SettingRow(
 private fun CalendarRow(state: EditorState, onPick: (Long) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     val selected = state.calendars.firstOrNull { it.id == state.calendarId }
-    // Existing events stay in their calendar: moving needs a delete and a create on the server
-    val canChoose = state.isNew && state.calendars.size > 1
+    // Another calendar for an existing event moves it there on save
+    val canChoose = state.calendars.size > 1
     Box {
         SettingRow(
             label = stringResource(Res.string.calendar),

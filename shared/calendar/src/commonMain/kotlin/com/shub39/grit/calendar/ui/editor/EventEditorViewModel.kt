@@ -111,6 +111,8 @@ class EventEditorViewModel(
     /** The times as loaded, so that unchanged times keep their exact iCalendar form. */
     private var original: Pair<IcalTime, IcalTime>? = null
     private var originalFields: EditorState? = null
+    /** The calendar of the event as loaded: another choice moves the event on save. */
+    private var originalCalendarId: Long? = null
 
     fun load(eventId: Long?, date: LocalDate?, hour: Int? = null) {
         if (loaded) return
@@ -176,6 +178,17 @@ class EventEditorViewModel(
             val details = store.details(eventId) ?: return@launch
             val info = details.info
             original = info.start to info.end
+            originalCalendarId = details.collection.id
+            // The event can move to any calendar that the user can write to
+            val calendars =
+                store
+                    .collectionsFlow()
+                    .first()
+                    .filter {
+                        it.id == details.collection.id ||
+                            (it.canWrite && it.supportsEvents && it.visible)
+                    }
+                    .map { CalendarOption(it.id, it.displayName ?: it.url) }
             val deviceZone = ZoneId.systemDefault().id
             val loadedState =
                 when (val start = info.start) {
@@ -220,13 +233,7 @@ class EventEditorViewModel(
                     repeat = repeat,
                     customRule = info.rrule.takeIf { repeat == RepeatChoice.Custom },
                     reminders = info.reminderMinutes.toSet(),
-                    calendars =
-                        listOf(
-                            CalendarOption(
-                                details.collection.id,
-                                details.collection.displayName ?: details.collection.url,
-                            )
-                        ),
+                    calendars = calendars,
                     calendarId = details.collection.id,
                     category = info.category,
                     categories = _state.value.categories,
@@ -289,8 +296,12 @@ class EventEditorViewModel(
         viewModelScope.launch {
             try {
                 val id = eventId
-                if (id == null) store.createEvent(calendarId, draft)
-                else store.updateEvent(id, draft)
+                if (id == null) {
+                    store.createEvent(calendarId, draft)
+                } else {
+                    store.updateEvent(id, draft)
+                    if (calendarId != originalCalendarId) store.moveEvent(id, calendarId)
+                }
                 _state.update { it.copy(saving = false, saved = true) }
             } catch (_: Exception) {
                 _state.update { it.copy(saving = false, error = EditorError.SaveFailed) }

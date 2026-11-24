@@ -4,10 +4,12 @@ This fork of Grit adds a Calendar tab that syncs with a CalDAV server, for examp
 
 ## What it does
 
-- It shows a month grid with the events of the selected day, a week view with hours, and an agenda list.
-- It tells calendars apart by a pattern, because the color of an event is the color of its category. Each calendar has one of six patterns: solid, outline, hatched, dashed, dotted or cross-hatched. A new calendar gets the next pattern; "Calendar patterns" in the calendar settings changes it. A row of chips under the view selector shows each calendar with its pattern, and a tap shows or hides the calendar. The last chip does the same for the tasks with a date.
+- It shows a month grid with the events of the selected day, a week view, and an agenda list.
+  - In the month grid, the days of the months before and after are darker, and today has a tint of the theme color. In a day, an event is lower for a later start time: the top of the cell is the morning, the bottom is the evening. Multi-day and all-day events stay at the top.
+  - The week view is like a paper planner: two columns of four cells. Each day cell lists its events with their start time, in the color of their category. The eighth cell is an overview of the hours of the week, from 8:00 to 20:00 or more, with a block per event. A tap beside the events of a day, or on a free hour of the overview, creates an event there.
+- It tells calendars apart by a pattern, because the color of an event is the color of its category. Each calendar has one of six patterns: solid, outline, hatched, dashed, dotted or cross-hatched. A new calendar gets the next pattern; "Calendar patterns" in the calendar settings changes it. A row of chips under the view selector shows each calendar with its pattern, and a tap shows or hides the calendar. One chip does the same for the tasks with a date. A long press, then a drag, moves a chip, and the chips keep that order. The lines of the hatched patterns are fainter behind the text of an event.
 - It keeps calendars on the device only, without a server. These calendars never sync. A hidden local account holds them, so they use the same storage, editor and reminders as synced calendars.
-- It creates, edits and deletes events on calendars that you can write to. A repeating event is edited as a whole series. One occurrence can be deleted on its own.
+- It creates, edits and deletes events on calendars that you can write to. A repeating event is edited as a whole series. One occurrence can be deleted on its own. The editor can move an event to another calendar that you can write to: the event keeps its UID and its changed occurrences, and the next sync deletes it from its former calendar on the server.
 - It shows read-only calendars without edit actions. If the server does not give the `DAV:write-content` privilege, the calendar is read-only.
 - It moves a calendar between this device and the server:
   - "Start syncing" on a calendar of the device puts it on the server, with the same name and color, and uploads its events. If the calendar was on the server before and that server calendar still exists, Grit reconnects to it: events changed on the device upload, and the others take the server version.
@@ -120,7 +122,7 @@ GRIT_SCREENSHOTS=/tmp/grit-shots ./gradlew :shared:calendar:jvmTest --tests '*Sc
 - An event that you delete on the device while a kept calendar does not sync comes back when you start syncing it again.
 - Grit creates a server calendar only through "Start syncing". For an empty one, use the web interface of the server.
 - A single occurrence of a repeating event cannot be edited, only deleted.
-- No day view with hours.
+- No view with an hour grid: the week view has an overview of the hours, without titles.
 - A task list that you can only read gets no changes from Grit: Grit undoes them at the next sync.
 - Category names, category colors and task colors do not sync.
 - The Grit backup file does not contain which categories sync with which task lists. After a restore, start syncing the lists again: tasks with the same title pair, so no copies appear.

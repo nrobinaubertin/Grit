@@ -89,6 +89,12 @@ object Formatting {
         java.time.DayOfWeek.of(day.ordinal + 1)
             .getDisplayName(java.time.format.TextStyle.SHORT, locale)
 
+    /** Full weekday name, for example "Monday" or "Lundi". */
+    fun weekdayLong(day: kotlinx.datetime.DayOfWeek): String =
+        java.time.DayOfWeek.of(day.ordinal + 1)
+            .getDisplayName(java.time.format.TextStyle.FULL, locale)
+            .replaceFirstChar { it.titlecase(locale) }
+
     fun dateTime(epochMillis: Long): String =
         Instant.ofEpochMilli(epochMillis)
             .atZone(ZoneId.systemDefault())

@@ -20,22 +20,52 @@ import com.shub39.grit.caldav.davx5.Css3Color
 
 /** Category colors are CSS color names, the format of the RFC 7986 COLOR property. */
 object CategoryColors {
-    /** Colors offered for new categories. */
+    /**
+     * Colors offered for categories: six rows of six, strong colors above their lighter forms. Reds
+     * to yellows, greens to blue-greys, then blues, purples, greys and browns.
+     */
     val palette =
         listOf(
-            "royalblue",
+            "mediumvioletred",
             "crimson",
-            "seagreen",
+            "orangered",
             "darkorange",
-            "mediumpurple",
-            "teal",
-            "goldenrod",
+            "orange",
+            "gold",
             "hotpink",
-            "sienna",
-            "slategray",
-            "deepskyblue",
+            "lightcoral",
+            "coral",
+            "sandybrown",
+            "khaki",
+            "yellow",
+            "yellowgreen",
             "olivedrab",
+            "seagreen",
+            "teal",
+            "darkturquoise",
+            "slategray",
+            "greenyellow",
+            "lightgreen",
+            "mediumseagreen",
+            "mediumaquamarine",
+            "mediumturquoise",
+            "lightsteelblue",
+            "dodgerblue",
+            "royalblue",
+            "darkslateblue",
+            "darkorchid",
+            "gray",
+            "sienna",
+            "deepskyblue",
+            "cornflowerblue",
+            "mediumpurple",
+            "orchid",
+            "silver",
+            "rosybrown",
         )
+
+    /** Colors per row of the palette in the color pickers. */
+    const val PALETTE_COLUMNS = 6
 
     /** A stable color for a category that arrived without one. */
     fun defaultFor(name: String): String =

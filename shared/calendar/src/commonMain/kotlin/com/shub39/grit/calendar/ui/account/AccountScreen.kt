@@ -1074,8 +1074,6 @@ private fun NewLocalCalendarDialog(viewModel: AccountViewModel, onDismiss: () ->
     )
 }
 
-/** Name and color of a category. The name cannot change once events use it. */
-@OptIn(ExperimentalLayoutApi::class)
 /** "Used in Family (3), Personal (1)", or that no event uses the category. */
 @Composable
 private fun usesText(uses: List<CategoryUse>): String =
@@ -1086,6 +1084,8 @@ private fun usesText(uses: List<CategoryUse>): String =
             uses.joinToString(", ") { "${it.calendar ?: "?"} (${it.events})" },
         )
 
+/** Name and color of a category. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun CategoryDialog(
     title: String,
@@ -1129,6 +1129,7 @@ internal fun CategoryDialog(
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
+                    maxItemsInEachRow = CategoryColors.PALETTE_COLUMNS,
                 ) {
                     for (option in (CategoryColors.palette + initialColor).distinct()) {
                         Box(

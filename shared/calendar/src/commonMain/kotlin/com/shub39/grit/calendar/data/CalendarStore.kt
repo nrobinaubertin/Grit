@@ -159,6 +159,32 @@ class CalendarStore(private val db: CalendarDatabase) {
         dao.putValue(KeyValueEntity(PATTERN + collectionId, pattern.ordinal.toLong()))
     }
 
+    /**
+     * The place of each chip under the views, by calendar id. The chip of the tasks with a date
+     * uses the id [TASKS_CHIP_ID]. Chips without a place come after the others.
+     */
+    fun chipOrderFlow(): Flow<Map<Long, Int>> =
+        dao.valuesFlow(CHIP_ORDER)
+            .map { rows ->
+                rows
+                    .mapNotNull { row ->
+                        row.key.removePrefix(CHIP_ORDER).toLongOrNull()?.let {
+                            it to row.value.toInt()
+                        }
+                    }
+                    .toMap()
+            }
+            .distinctUntilChanged()
+
+    /** Saves the order of the chips under the views: [ids] from left to right. */
+    suspend fun setChipOrder(ids: List<Long>) {
+        db.withWriteTransaction {
+            for ((index, id) in ids.withIndex()) {
+                dao.putValue(KeyValueEntity(CHIP_ORDER + id, index.toLong()))
+            }
+        }
+    }
+
     /** Whether the views show the open tasks that have a date. On by default. */
     fun tasksVisibleFlow(): Flow<Boolean> =
         dao.valuesFlow(TASKS_VISIBLE)
@@ -521,6 +547,36 @@ class CalendarStore(private val db: CalendarDatabase) {
         saveLocal(event, resource)
     }
 
+    /**
+     * Moves an event, with its changed occurrences, to the calendar [collectionId]. The event goes
+     * into that calendar with its UID, and leaves its former calendar like a deleted event. On a
+     * server, the next sync uploads it to its new calendar and deletes it from the former one.
+     * Returns the id of the moved event.
+     */
+    suspend fun moveEvent(eventId: Long, collectionId: Long): Long {
+        val event = dao.event(eventId) ?: return eventId
+        if (event.collectionId == collectionId) return eventId
+        val target = dao.collection(collectionId) ?: error("Unknown calendar $collectionId")
+        val moved =
+            event.copy(
+                id = 0,
+                collectionId = collectionId,
+                // The UID can hold characters that do not belong in a URL
+                href = target.url.trimEnd('/') + "/" + UUID.randomUUID() + ".ics",
+                etag = null,
+                // Events of a calendar on this device have nothing to upload
+                dirty = dao.isLocalCollection(collectionId) != true,
+                deleted = false,
+                version = 1,
+                existsOnServer = false,
+                syncError = null,
+            )
+        val id = dao.insertEvent(moved)
+        expand(moved.copy(id = id))
+        deleteEvent(eventId)
+        return id
+    }
+
     /** Removes one occurrence of a repeating event. */
     suspend fun deleteOccurrence(eventId: Long, originalStart: Long) {
         val event = dao.event(eventId) ?: return
@@ -577,6 +633,12 @@ class CalendarStore(private val db: CalendarDatabase) {
         private const val CATEGORIES_INDEXED = "categories_indexed"
         private const val DEFAULT_VIEW = "view.default"
         private const val TASKS_VISIBLE = "view.tasks"
+        /** The id of the chip of the tasks with a date, in [chipOrderFlow]. */
+        const val TASKS_CHIP_ID = -1L
+
+        /** kv key prefix, followed by the calendar id. The value is the place of its chip. */
+        private const val CHIP_ORDER = "calendar-order:"
+
         /** kv key prefix, followed by the calendar id. The value is a [CalendarPattern] ordinal. */
         private const val PATTERN = "calendar-pattern:"
         private const val WINDOW_START = "window_start"

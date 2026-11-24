@@ -28,6 +28,7 @@ import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.runDesktopComposeUiTest
 import androidx.room3.Room
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
+import com.shub39.grit.calendar.data.CalendarPattern
 import com.shub39.grit.calendar.data.CalendarStore
 import com.shub39.grit.calendar.data.db.AccountEntity
 import com.shub39.grit.calendar.data.db.CalendarDatabase
@@ -41,11 +42,9 @@ import com.shub39.grit.calendar.ui.home.DayEvent
 import com.shub39.grit.calendar.ui.home.EventDetailsUi
 import com.shub39.grit.calendar.ui.home.MONTH_LANES
 import com.shub39.grit.calendar.ui.home.MonthData
-import com.shub39.grit.calendar.ui.home.WEEK_BAND_LANES
 import com.shub39.grit.calendar.ui.home.WeekData
 import com.shub39.grit.calendar.ui.home.WeekLanes
 import com.shub39.grit.calendar.ui.home.byDay
-import com.shub39.grit.calendar.ui.home.isBandEvent
 import com.shub39.grit.calendar.ui.home.layoutTimed
 import com.shub39.grit.calendar.ui.home.layoutWeek
 import com.shub39.grit.calendar.ui.home.startOfWeek
@@ -138,6 +137,14 @@ class ScreenshotTest {
             color = color,
             calendarName = if (canWrite) "family" else "alice-personal",
             canWrite = canWrite,
+            // A few patterns, to see them in the views
+            pattern =
+                when {
+                    !canWrite -> CalendarPattern.Hatched
+                    category == "Work" -> CalendarPattern.Crossed
+                    category == null -> CalendarPattern.Dashed
+                    else -> CalendarPattern.Solid
+                },
         )
     }
 
@@ -184,12 +191,12 @@ class ScreenshotTest {
                     mapOf(
                         weekStart to
                             WeekData(
-                                band =
-                                    layoutWeek(
-                                        weekStart,
-                                        events.filter { it.isBandEvent() },
-                                        WEEK_BAND_LANES,
-                                    ),
+                                days =
+                                    List(7) {
+                                        byDay(events, first, last)[
+                                                weekStart.plus(DatePeriod(days = it))]
+                                            .orEmpty()
+                                    },
                                 boxes =
                                     layoutTimed(weekStart, events, java.time.ZoneId.systemDefault()),
                             )

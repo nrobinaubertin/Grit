@@ -30,7 +30,12 @@ data class Segment(
     val event: DayEvent,
     val startColumn: Int,
     val endColumn: Int,
-    val lane: Int,
+    /**
+     * Lines from the top of the event area of the cell. Bars over several days or a whole day are
+     * on whole lines, at the top. Other events are lower for a later time, so they can be between
+     * two lines.
+     */
+    val position: Float,
     /** The event started before this week: the bar has no left end. */
     val continuesBefore: Boolean,
     /** The event goes on after this week: the bar has no right end. */
@@ -57,25 +62,39 @@ data class TimedBox(
     val slots: Int,
 )
 
-/** The all-day band and the hour boxes of one week. */
+/** The events of each day of one week, and the boxes of the hour overview. */
 @Immutable
-data class WeekData(val band: WeekLanes, val boxes: List<TimedBox>) {
+data class WeekData(val days: List<List<DayEvent>>, val boxes: List<TimedBox>) {
     companion object {
-        val Empty = WeekData(WeekLanes.Empty, emptyList())
+        val Empty = WeekData(List(7) { emptyList() }, emptyList())
     }
 }
 
 private const val DAY_MS = 24 * 60 * 60 * 1000L
 
-/** All-day events and events of 24 hours or more go in the band above the hour grid. */
+/** All-day events and events of 24 hours or more stay out of the hour overview of the week. */
 fun DayEvent.isBandEvent(): Boolean = allDay || end - begin >= DAY_MS
 
 /**
- * Places the events of a week in lanes, like the month view of most calendar apps. Multi-day events
- * come first and keep one lane over all their days. A day with more events than [maxLanes] shows
- * [maxLanes] - 1 events, and the last lane counts the hidden ones.
+ * The part of the day that the height of a month cell shows. Events before it are at the top of the
+ * cell, events after it at the bottom.
  */
-fun layoutWeek(weekStart: LocalDate, events: List<DayEvent>, maxLanes: Int): WeekLanes {
+private const val CELL_DAY_START = 6 * 60
+private const val CELL_DAY_END = 22 * 60
+
+/**
+ * Places the events of a week in the month grid. Multi-day and all-day events come first, as bars
+ * on whole lines that keep one line over all their days, like the month view of most calendar apps.
+ * The other events of a day go below these bars, lower for a later start: the top of the cell is
+ * the morning, the bottom is the evening. A day with more events than [maxLanes] shows [maxLanes] -
+ * 1 events, and the last line counts the hidden ones.
+ */
+fun layoutWeek(
+    weekStart: LocalDate,
+    events: List<DayEvent>,
+    maxLanes: Int,
+    zone: ZoneId = ZoneId.systemDefault(),
+): WeekLanes {
     val weekEnd = weekStart.plus(DatePeriod(days = 6))
     val candidates =
         events
@@ -87,21 +106,23 @@ fun layoutWeek(weekStart: LocalDate, events: List<DayEvent>, maxLanes: Int): Wee
                     .thenBy { it.begin }
                     .thenByDescending { it.end }
             )
+    val (bars, timed) = candidates.partition { it.allDay || it.endDay > it.startDay }
     fun column(date: LocalDate) =
         (date.toEpochDays() - weekStart.toEpochDays()).toInt().coerceIn(0, 6)
+    val timedByColumn = timed.groupBy { column(it.startDay) }
 
     val total = IntArray(7)
     for (event in candidates) {
         for (c in column(event.startDay)..column(event.endDay)) total[c]++
     }
-    // Days with too many events keep their last lane for "+N"
+    // Days with too many events keep their last line for "+N"
     val capacity = IntArray(7) { if (total[it] > maxLanes) maxLanes - 1 else maxLanes }
 
     repeat(3) {
         val occupied = Array(maxLanes) { BooleanArray(7) }
         val segments = mutableListOf<Segment>()
         val hidden = IntArray(7)
-        for (event in candidates) {
+        for (event in bars) {
             val start = column(event.startDay)
             val end = column(event.endDay)
             val limit = (start..end).minOf { capacity[it] }
@@ -117,20 +138,52 @@ fun layoutWeek(weekStart: LocalDate, events: List<DayEvent>, maxLanes: Int): Wee
                     event = event,
                     startColumn = start,
                     endColumn = end,
-                    lane = lane,
+                    position = lane.toFloat(),
                     continuesBefore = event.startDay < weekStart,
                     continuesAfter = event.endDay > weekEnd,
                 )
         }
-        // A day that hides events needs its last lane free for "+N"
-        val needsRoom =
-            (0 until 7).filter {
-                hidden[it] > 0 && capacity[it] == maxLanes && occupied[maxLanes - 1][it]
+        for ((c, dayEvents) in timedByColumn) {
+            // Below the lowest bar of the day
+            val top = (maxLanes - 1 downTo 0).firstOrNull { occupied[it][c] }?.plus(1) ?: 0
+            val shown = dayEvents.take((capacity[c] - top).coerceAtLeast(0))
+            hidden[c] += dayEvents.size - shown.size
+            val positions = placeByTime(shown.map { dayFraction(it.begin, zone) }, top, capacity[c])
+            for ((event, position) in shown.zip(positions)) {
+                segments += Segment(event, c, c, position, false, false)
             }
+        }
+        // A day that hides events needs its last line free for "+N"
+        val needsRoom = (0 until 7).filter { hidden[it] > 0 && capacity[it] == maxLanes }
         if (needsRoom.isEmpty()) return WeekLanes(segments, hidden.toList())
         for (c in needsRoom) capacity[c] = maxLanes - 1
     }
     return WeekLanes.Empty
+}
+
+/** Where [begin] falls in the part of the day that a month cell shows, from 0 to 1. */
+private fun dayFraction(begin: Long, zone: ZoneId): Float {
+    val time = java.time.Instant.ofEpochMilli(begin).atZone(zone)
+    val minute = time.hour * 60 + time.minute
+    return ((minute - CELL_DAY_START).toFloat() / (CELL_DAY_END - CELL_DAY_START)).coerceIn(0f, 1f)
+}
+
+/**
+ * Positions for events at the day [fractions] (in order), between the lines [top] and [bottom]
+ * (exclusive): each at the place of its time, and one line apart at least. There must be room for
+ * all of them.
+ */
+internal fun placeByTime(fractions: List<Float>, top: Int, bottom: Int): List<Float> {
+    val span = (bottom - top - 1).coerceAtLeast(0)
+    val positions = FloatArray(fractions.size) { top + fractions[it] * span }
+    for (i in 1 until positions.size) {
+        positions[i] = maxOf(positions[i], positions[i - 1] + 1f)
+    }
+    for (i in positions.indices.reversed()) {
+        val limit = if (i == positions.lastIndex) bottom - 1f else positions[i + 1] - 1f
+        positions[i] = minOf(positions[i], limit)
+    }
+    return positions.toList()
 }
 
 /**

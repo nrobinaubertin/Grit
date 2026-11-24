@@ -25,6 +25,8 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -74,8 +76,11 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.retain.retain
@@ -84,7 +89,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.shub39.grit.core.tasks.Category
@@ -112,10 +127,44 @@ import com.shub39.grit.shared.ui.theme.flexFontEmphasis
 import com.shub39.grit.shared.ui.theme.flexFontRounded
 import grit.shared.ui.generated.resources.*
 import grit.shared.ui.generated.resources.add
+import kotlin.math.roundToInt
 import org.jetbrains.compose.resources.stringResource
 import org.jetbrains.compose.resources.vectorResource
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
+
+/**
+ * A task that moves by its drag handle towards the category buttons (calendar fork): the buttons
+ * where it can drop, in root coordinates, the one under the finger, and the title shown above the
+ * finger out of the list.
+ */
+@Stable
+private class CategoryDrop(private val slop: Float) {
+    val targets = mutableStateMapOf<Long, Rect>()
+    var hovered by mutableStateOf<Long?>(null)
+    var ghost by mutableStateOf<Pair<String, Offset>?>(null)
+    /** The top of the task list, and the top left corner of the page, in root coordinates. */
+    var listTop = 0f
+    var origin = Offset.Zero
+
+    fun move(task: Task, position: Offset) {
+        hovered =
+            targets.entries
+                .firstOrNull {
+                    it.key != task.categoryId && it.value.inflate(slop).contains(position)
+                }
+                ?.key
+        ghost = if (hovered != null || position.y < listTop) task.title to position else null
+    }
+
+    /** Ends the drag. Returns the category under the finger, or null. */
+    fun finish(): Long? {
+        val target = hovered
+        hovered = null
+        ghost = null
+        return target
+    }
+}
 
 sealed interface ShowTaskUpsertSheet {
     data object Add : ShowTaskUpsertSheet
@@ -160,12 +209,15 @@ fun TaskList(
         }
 
         val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
+        val slop = with(LocalDensity.current) { 12.dp.toPx() }
+        val drop = remember { CategoryDrop(slop) }
 
         Column(
             modifier =
                 Modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
                     .fillMaxSize()
                     .background(MaterialTheme.colorScheme.background)
+                    .onGloballyPositioned { drop.origin = it.positionInRoot() }
         ) {
             TaskListTopBar(
                 state = state,
@@ -178,6 +230,7 @@ fun TaskList(
 
             CategorySelector(
                 state = state,
+                drop = drop,
                 isReorderMode = editState,
                 onAction = onAction,
                 onAddCategoryClick = {
@@ -192,6 +245,7 @@ fun TaskList(
             if (windowSizeClass.isCompact()) {
                 CompactTasksView(
                     state = state,
+                    drop = drop,
                     isReorderMode = editState,
                     onAction = onAction,
                     onEditTask = { showTaskUpsertSheet = ShowTaskUpsertSheet.Edit(it) },
@@ -216,6 +270,35 @@ fun TaskList(
                             showSubTasksFeaturePreview = true
                         }
                     },
+                )
+            }
+        }
+
+        // The title of a task dragged out of the list, above the finger (calendar fork)
+        drop.ghost?.let { (title, position) ->
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.secondaryContainer,
+                shadowElevation = 6.dp,
+                modifier =
+                    Modifier.align(Alignment.TopStart).layout { measurable, constraints ->
+                        val placeable =
+                            measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
+                        layout(placeable.width, placeable.height) {
+                            placeable.place(
+                                (position.x - drop.origin.x - placeable.width / 2f).roundToInt(),
+                                (position.y - drop.origin.y - placeable.height - 24.dp.toPx())
+                                    .roundToInt(),
+                            )
+                        }
+                    },
+            ) {
+                Text(
+                    text = title,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier =
+                        Modifier.widthIn(max = 240.dp).padding(horizontal = 12.dp, vertical = 8.dp),
                 )
             }
         }
@@ -443,6 +526,7 @@ private fun TaskListTopBar(
 @Composable
 private fun CategorySelector(
     state: TaskState,
+    drop: CategoryDrop,
     isReorderMode: Boolean,
     onAction: (TaskAction) -> Unit,
     onAddCategoryClick: () -> Unit,
@@ -457,12 +541,18 @@ private fun CategorySelector(
     ) {
         if (!isExpanded) {
             items(state.tasks.keys.toList(), key = { it.id }) { category ->
+                // A task dropped on the button moves to this category (calendar fork)
+                DisposableEffect(category.id) { onDispose { drop.targets.remove(category.id) } }
                 ToggleButton(
-                    checked = category == state.currentCategory,
+                    checked = category == state.currentCategory || category.id == drop.hovered,
                     onCheckedChange = {
                         onAction(TaskAction.ChangeCategory(category))
                         onReorderModeChange(false)
                     },
+                    modifier =
+                        Modifier.onGloballyPositioned {
+                            drop.targets[category.id] = it.boundsInRoot()
+                        },
                 ) {
                     Text(text = category.name)
                 }
@@ -509,6 +599,7 @@ private fun CategorySelector(
 @Composable
 private fun CompactTasksView(
     state: TaskState,
+    drop: CategoryDrop,
     isReorderMode: Boolean,
     onAction: (TaskAction) -> Unit,
     onEditTask: (Task) -> Unit,
@@ -518,7 +609,10 @@ private fun CompactTasksView(
     Surface(
         color = MaterialTheme.colorScheme.surfaceContainer,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-        modifier = Modifier.padding(horizontal = if (isCompact) 0.dp else 16.dp),
+        modifier =
+            Modifier.padding(horizontal = if (isCompact) 0.dp else 16.dp).onGloballyPositioned {
+                drop.listTop = it.positionInRoot().y
+            },
     ) {
         val motionScheme = MaterialTheme.motionScheme
         AnimatedContent(
@@ -584,21 +678,72 @@ private fun CompactTasksView(
                                 taskWithSubTasks = taskWithSubTasks,
                                 dragState = isReorderMode,
                                 reorderIcon = {
+                                    var handle by remember {
+                                        mutableStateOf<LayoutCoordinates?>(null)
+                                    }
                                     Icon(
                                         imageVector = vectorResource(Res.drawable.drag_indicator),
                                         contentDescription = "Drag",
                                         modifier =
-                                            Modifier.draggableHandle(
-                                                onDragStopped = {
-                                                    onAction(
-                                                        TaskAction.ReorderTasks(
-                                                            reorderableTasks.mapIndexed { i, t ->
-                                                                i to t.task
-                                                            }
+                                            Modifier.onGloballyPositioned { handle = it }
+                                                // Follows the finger over the category buttons
+                                                // (calendar fork)
+                                                .pointerInput(taskWithSubTasks.task.id) {
+                                                    awaitEachGesture {
+                                                        awaitFirstDown(
+                                                            requireUnconsumed = false,
+                                                            pass = PointerEventPass.Initial,
                                                         )
-                                                    )
+                                                        do {
+                                                            val event =
+                                                                awaitPointerEvent(
+                                                                    PointerEventPass.Initial
+                                                                )
+                                                            val change =
+                                                                event.changes.firstOrNull() ?: break
+                                                            handle
+                                                                ?.takeIf { it.isAttached }
+                                                                ?.let {
+                                                                    drop.move(
+                                                                        taskWithSubTasks.task,
+                                                                        it.localToRoot(
+                                                                            change.position
+                                                                        ),
+                                                                    )
+                                                                }
+                                                        } while (event.changes.any { it.pressed })
+                                                    }
                                                 }
-                                            ),
+                                                .draggableHandle(
+                                                    onDragStopped = {
+                                                        val target =
+                                                            drop.finish()?.let { id ->
+                                                                state.tasks.keys.firstOrNull {
+                                                                    it.id == id
+                                                                }
+                                                            }
+                                                        val task = taskWithSubTasks.task
+                                                        // A task dropped on a category moves there
+                                                        val stay =
+                                                            if (target == null) reorderableTasks
+                                                            else
+                                                                reorderableTasks.filter {
+                                                                    it.task.id != task.id
+                                                                }
+                                                        onAction(
+                                                            TaskAction.ReorderTasks(
+                                                                stay.mapIndexed { i, t ->
+                                                                    i to t.task
+                                                                }
+                                                            )
+                                                        )
+                                                        if (target != null) {
+                                                            onAction(
+                                                                TaskAction.MoveTask(task, target)
+                                                            )
+                                                        }
+                                                    }
+                                                ),
                                     )
                                 },
                                 is24Hr = state.is24Hour,

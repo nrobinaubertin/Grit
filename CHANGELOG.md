@@ -1,5 +1,15 @@
 # Changelog
 
+## 7.11.0
+- The week view looks like a paper planner: two columns with one cell per day and its events, and an overview of the hours of the week in the eighth cell. Tap beside the events of a day, or on a free hour of the overview, to create an event
+- In the month view, an event is lower in its day for a later time, the days of the months before and after are darker, and today stands out
+- Change the calendar of an event in the editor
+- Move a calendar chip with a long press and a drag: the chips keep their new order
+- The hatched patterns show again behind the text of events, with fainter lines there
+- 36 colors for categories and tasks
+- The clock follows the 24-hour setting of the phone until you choose one in the Grit settings
+- Drag a task by its handle onto another category to move it there
+
 ## 7.10.2
 - The lines of the hatched and cross-hatched patterns stop around event titles and times, so that the text stays readable
 

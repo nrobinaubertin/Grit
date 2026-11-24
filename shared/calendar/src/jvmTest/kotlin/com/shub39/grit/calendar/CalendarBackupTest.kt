@@ -44,7 +44,14 @@ class CalendarBackupTest {
     private val databases = mutableListOf<CalendarDatabase>()
 
     private class Device(val db: CalendarDatabase) {
-        val store = CalendarStore(db)
+        // A fixed day before the events, so that their reminders are still ahead
+        val store =
+            CalendarStore(db).also {
+                it.clock =
+                    object : kotlin.time.Clock {
+                        override fun now() = Instant.parse("2026-11-10T12:00:00Z")
+                    }
+            }
         val dao = db.calendarDao()
         // No SyncScheduler: its background loop would outlive the database of the test
         val backup = CalendarBackup(db, store, ReminderScheduler())

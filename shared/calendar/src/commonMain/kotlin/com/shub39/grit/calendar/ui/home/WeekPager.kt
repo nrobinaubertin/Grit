@@ -18,14 +18,13 @@ package com.shub39.grit.calendar.ui.home
 
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -37,41 +36,64 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.shub39.grit.calendar.ui.Formatting
+import java.time.ZoneId
 import kotlin.math.abs
+import kotlin.math.floor
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.LocalDate
-import kotlinx.datetime.LocalTime
 import kotlinx.datetime.plus
 
 /** Weeks on each side of the current week that the pager can reach. */
 private const val PAGE_RANGE = 52 * 10
 
-private val GUTTER = 44.dp
-private val HEADER_HEIGHT = 48.dp
+/** Hours that the overview always shows. Events outside them make it longer. */
+private const val OVERVIEW_FIRST_HOUR = 8
+private const val OVERVIEW_LAST_HOUR = 20
+
+/** Most lines of one event in a day cell. */
+private const val EVENT_MAX_LINES = 3
 
 /**
- * Swipeable week view: a header with the days, a band with all-day and multi-day events, and an
- * hour grid. The 24 hours fit the screen height, so the whole week shows without scrolling. Every
- * part is one drawing, like the month grid, so that slow phones keep up.
+ * Swipeable week view, like a paper planner: two columns of four cells. The first four days are on
+ * the left, the last three on the right, and the eighth cell is an overview of the hours of the
+ * week. Each day cell lists its events with their start time. Every part is one drawing, like the
+ * month grid, so that slow phones keep up.
  */
 @Composable
 internal fun WeekPager(
     week: LocalDate,
-    selectedDate: LocalDate,
     today: LocalDate,
     firstDayOfWeek: DayOfWeek,
     weeks: Map<LocalDate, WeekData>,
@@ -80,7 +102,7 @@ internal fun WeekPager(
     onWeekChange: (LocalDate) -> Unit,
     onSelect: (LocalDate) -> Unit,
     onOpenEvent: (DayEvent) -> Unit,
-    onCreateAt: (LocalDate, Int) -> Unit,
+    onCreateAt: (LocalDate, Int?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val origin = remember(firstDayOfWeek) { startOfWeek(today, firstDayOfWeek) }
@@ -130,7 +152,6 @@ internal fun WeekPager(
         val start = origin.plus(DatePeriod(days = 7 * (page - PAGE_RANGE)))
         WeekPage(
             start = start,
-            selectedDate = selectedDate,
             today = today,
             data = weeks[start] ?: WeekData.Empty,
             is24Hr = is24Hr,
@@ -145,10 +166,30 @@ internal fun WeekPager(
 
 private fun currentMinute(): Int = java.time.LocalTime.now().let { it.hour * 60 + it.minute }
 
+/** The cell of the day at [index] in the week: four on the left, then three on the right. */
+private fun cellOf(index: Int): Pair<Int, Int> = if (index < 4) 0 to index else 1 to index - 4
+
+/** The day under [offset] in a page of [size], or -1 for the overview. */
+private fun dayAt(offset: Offset, size: IntSize): Int {
+    val column = if (offset.x < size.width / 2f) 0 else 1
+    val row = (offset.y / (size.height / 4f)).toInt().coerceIn(0, 3)
+    return when {
+        column == 0 -> row
+        row == 3 -> -1
+        else -> 4 + row
+    }
+}
+
+private fun LocalDate.isWeekend() = dayOfWeek == DayOfWeek.SATURDAY || dayOfWeek == DayOfWeek.SUNDAY
+
+/** Where the events of the shown page are, so that a tap finds the event under it. */
+private class EventHits {
+    var areas: List<Pair<Rect, DayEvent>> = emptyList()
+}
+
 @Composable
 private fun WeekPage(
     start: LocalDate,
-    selectedDate: LocalDate,
     today: LocalDate,
     data: WeekData,
     is24Hr: Boolean,
@@ -156,388 +197,450 @@ private fun WeekPage(
     nowMinute: Int,
     onSelect: (LocalDate) -> Unit,
     onOpenEvent: (DayEvent) -> Unit,
-    onCreateAt: (LocalDate, Int) -> Unit,
+    onCreateAt: (LocalDate, Int?) -> Unit,
 ) {
     val days = remember(start) { List(7) { start.plus(DatePeriod(days = it)) } }
-    Column(modifier = Modifier.fillMaxSize()) {
-        WeekHeader(days, selectedDate, today, onSelect)
-        WeekBand(days, data.band, onSelect, onOpenEvent)
-        HorizontalDivider()
-        Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
-            HourGrid(
-                days = days,
-                boxes = data.boxes,
-                todayColumn = days.indexOf(today),
-                nowMinute = nowMinute,
-                is24Hr = is24Hr,
-                canCreate = canCreate,
-                onSelect = onSelect,
-                onOpenEvent = onOpenEvent,
-                onCreateAt = onCreateAt,
-            )
-        }
-    }
-}
-
-@Composable
-private fun WeekHeader(
-    days: List<LocalDate>,
-    selectedDate: LocalDate,
-    today: LocalDate,
-    onSelect: (LocalDate) -> Unit,
-) {
-    val colors = MaterialTheme.colorScheme
-    val painter = remember { GridTextPainter() }
-    val currentOnSelect by rememberUpdatedState(onSelect)
-    Spacer(
-        modifier =
-            Modifier.fillMaxWidth()
-                .height(HEADER_HEIGHT)
-                .pointerInput(days) {
-                    detectTapGestures { offset ->
-                        val gutter = GUTTER.toPx()
-                        if (offset.x < gutter) return@detectTapGestures
-                        val column = ((offset.x - gutter) / ((size.width - gutter) / 7f)).toInt()
-                        currentOnSelect(days[column.coerceIn(0, 6)])
-                    }
-                }
-                .drawWithCache {
-                    val gutter = GUTTER.toPx()
-                    val columnWidth = (size.width - gutter) / 7
-                    val nameSize = 11.sp.toPx()
-                    val numberSize = 15.sp.toPx()
-                    val radius = 14.dp.toPx()
-                    val numberCenter = size.height - radius - 2.dp.toPx()
-                    onDrawBehind {
-                        for ((index, day) in days.withIndex()) {
-                            val center = gutter + columnWidth * (index + 0.5f)
-                            val isToday = day == today
-                            val selected = day == selectedDate
-                            painter.draw(
-                                scope = this,
-                                text = Formatting.weekday(day.dayOfWeek),
-                                x = center,
-                                baseline = nameSize * 1.1f,
-                                clipRight = center + columnWidth / 2,
-                                color = if (isToday) colors.primary else colors.onSurfaceVariant,
-                                sizePx = nameSize,
-                                centered = true,
-                            )
-                            if (isToday || selected) {
-                                drawCircle(
-                                    if (isToday) colors.primary else colors.surfaceContainerHighest,
-                                    radius,
-                                    Offset(center, numberCenter),
-                                )
-                            }
-                            painter.draw(
-                                scope = this,
-                                text = day.day.toString(),
-                                x = center,
-                                baseline = numberCenter + numberSize * 0.36f,
-                                clipRight = center + columnWidth / 2,
-                                color = if (isToday) colors.onPrimary else colors.onSurface,
-                                sizePx = numberSize,
-                                bold = isToday || selected,
-                                centered = true,
-                            )
-                        }
-                    }
-                }
-    )
-}
-
-/** All-day and multi-day events above the hour grid, one bar over their days. */
-@Composable
-private fun WeekBand(
-    days: List<LocalDate>,
-    lanes: WeekLanes,
-    onSelect: (LocalDate) -> Unit,
-    onOpenEvent: (DayEvent) -> Unit,
-) {
-    val colors = MaterialTheme.colorScheme
-    val painter = remember { GridTextPainter() }
-    val used =
-        if (lanes.hidden.any { it > 0 }) WEEK_BAND_LANES
-        else (lanes.segments.maxOfOrNull { it.lane } ?: -1) + 1
-    val lineHeight = 18.dp
-    val lineGap = 2.dp
-    val currentOnSelect by rememberUpdatedState(onSelect)
-    val currentOnOpen by rememberUpdatedState(onOpenEvent)
-    Spacer(
-        modifier =
-            Modifier.fillMaxWidth()
-                .height(if (used == 0) 4.dp else (lineHeight + lineGap) * used + 4.dp)
-                .pointerInput(days, lanes) {
-                    detectTapGestures { offset ->
-                        val gutter = GUTTER.toPx()
-                        if (offset.x < gutter) return@detectTapGestures
-                        val column =
-                            ((offset.x - gutter) / ((size.width - gutter) / 7f))
-                                .toInt()
-                                .coerceIn(0, 6)
-                        val lane =
-                            ((offset.y - 2.dp.toPx()) / (lineHeight + lineGap).toPx()).toInt()
-                        val segment =
-                            lanes.segments.firstOrNull {
-                                it.lane == lane && column in it.startColumn..it.endColumn
-                            }
-                        if (segment != null) currentOnOpen(segment.event)
-                        else currentOnSelect(days[column])
-                    }
-                }
-                .drawWithCache {
-                    val gutter = GUTTER.toPx()
-                    val columnWidth = (size.width - gutter) / 7
-                    val height = lineHeight.toPx()
-                    val step = height + lineGap.toPx()
-                    val inset = 2.dp.toPx()
-                    val textSize = 11.sp.toPx()
-                    val corner = CornerRadius(4.dp.toPx())
-                    onDrawBehind {
-                        for (segment in lanes.segments) {
-                            val color = eventColor(segment.event.color)
-                            val left =
-                                gutter +
-                                    segment.startColumn * columnWidth +
-                                    if (segment.continuesBefore) 0f else inset
-                            val right =
-                                gutter + (segment.endColumn + 1) * columnWidth -
-                                    if (segment.continuesAfter) 0f else inset
-                            val y = 2.dp.toPx() + segment.lane * step
-                            drawEventBlock(
-                                pattern = segment.event.pattern,
-                                color = color,
-                                topLeft = Offset(left, y),
-                                size = Size(right - left, height),
-                                corner = corner,
-                                tint = 0.55f,
-                                bar = 0f,
-                                background = colors.background,
-                                clear =
-                                    painter.clearArea(
-                                        pattern = segment.event.pattern,
-                                        text = segment.event.title,
-                                        sizePx = textSize,
-                                        x = left + inset * 2,
-                                        clipRight = right - inset,
-                                        // Past the bottom edge: the text fills the line
-                                        bottom = y + height + 1f,
-                                        margin = inset,
-                                    ),
-                            )
-                            painter.draw(
-                                scope = this,
-                                text = segment.event.title,
-                                x = left + inset * 2,
-                                baseline = y + height * 0.72f,
-                                clipRight = right - inset,
-                                color = colors.onSurface,
-                                sizePx = textSize,
-                            )
-                        }
-                        for ((column, count) in lanes.hidden.withIndex()) {
-                            if (count == 0) continue
-                            painter.draw(
-                                scope = this,
-                                text = "+$count",
-                                x = gutter + column * columnWidth + inset * 2,
-                                baseline =
-                                    2.dp.toPx() + (WEEK_BAND_LANES - 1) * step + height * 0.72f,
-                                clipRight = gutter + (column + 1) * columnWidth,
-                                color = colors.onSurfaceVariant,
-                                sizePx = textSize,
-                            )
-                        }
-                    }
-                }
-    )
-}
-
-@Composable
-private fun HourGrid(
-    days: List<LocalDate>,
-    boxes: List<TimedBox>,
-    todayColumn: Int,
-    nowMinute: Int,
-    is24Hr: Boolean,
-    canCreate: Boolean,
-    onSelect: (LocalDate) -> Unit,
-    onOpenEvent: (DayEvent) -> Unit,
-    onCreateAt: (LocalDate, Int) -> Unit,
-) {
-    val colors = MaterialTheme.colorScheme
-    val painter = remember { GridTextPainter() }
-    val hourLabels = remember(is24Hr) { List(24) { Formatting.time(LocalTime(it, 0), is24Hr) } }
+    val hits = remember { EventHits() }
     val currentOnSelect by rememberUpdatedState(onSelect)
     val currentOnOpen by rememberUpdatedState(onOpenEvent)
     val currentOnCreate by rememberUpdatedState(onCreateAt)
     val currentCanCreate by rememberUpdatedState(canCreate)
     Box(
         modifier =
-            Modifier.fillMaxSize().pointerInput(days, boxes) {
+            Modifier.fillMaxSize().padding(start = 4.dp, end = 4.dp, bottom = 4.dp).pointerInput(
+                days
+            ) {
                 detectTapGestures { offset ->
-                    val gutter = GUTTER.toPx()
-                    if (offset.x < gutter) return@detectTapGestures
-                    val columnWidth = (size.width - gutter) / 7f
-                    val hourHeight = size.height / 24f
+                    val hit = hits.areas.lastOrNull { it.first.contains(offset) }
+                    if (hit != null) return@detectTapGestures currentOnOpen(hit.second)
+                    val index = dayAt(offset, size)
+                    if (index < 0) return@detectTapGestures
+                    // A tap beside the events creates one on that day
+                    if (currentCanCreate) currentOnCreate(days[index], null)
+                    else currentOnSelect(days[index])
+                }
+            }
+    ) {
+        DayCells(days, today, data.days, is24Hr, hits, Modifier.matchParentSize())
+        HourOverview(
+            days = days,
+            today = today,
+            boxes = data.boxes,
+            nowMinute = nowMinute,
+            canCreate = canCreate,
+            onSelect = onSelect,
+            onOpenEvent = onOpenEvent,
+            onCreateAt = onCreateAt,
+            modifier = Modifier.align(Alignment.BottomEnd).fillMaxWidth(0.5f).fillMaxHeight(0.25f),
+        )
+    }
+}
+
+/** One event as it is drawn in a day cell. */
+private class EventLine(
+    val event: DayEvent,
+    val layout: TextLayoutResult,
+    val topLeft: Offset,
+    val color: Color,
+)
+
+/** The seven day cells: day number and name, then the events of the day. */
+@Composable
+private fun DayCells(
+    days: List<LocalDate>,
+    today: LocalDate,
+    events: List<List<DayEvent>>,
+    is24Hr: Boolean,
+    hits: EventHits,
+    modifier: Modifier,
+) {
+    val colors = MaterialTheme.colorScheme
+    val cells = rememberCellColors()
+    val painter = remember { GridTextPainter() }
+    val measurer = rememberTextMeasurer(cacheSize = 64)
+    Spacer(
+        modifier =
+            // Own layer: the recorded drawing is reused until the week or its events change
+            modifier.graphicsLayer().drawWithCache {
+                val zone = ZoneId.systemDefault()
+                val cellWidth = size.width / 2
+                val cellHeight = size.height / 4
+                val pad = 6.dp.toPx()
+                val numberSize = 20.sp.toPx()
+                val nameSize = 14.sp.toPx()
+                val headerBaseline = pad + numberSize * 0.95f
+                val eventsTop = headerBaseline + numberSize * 0.35f + 2.dp.toPx()
+                val style = TextStyle(fontSize = 12.sp, lineHeight = 15.sp)
+                val lineHeight = 15.sp.toPx()
+                val swatch = Size(10.dp.toPx(), 8.dp.toPx())
+                val indent = swatch.width + 4.dp.toPx()
+                val gap = 2.dp.toPx()
+                val moreSize = 11.sp.toPx()
+                val moreHeight = moreSize * 1.4f
+                val corner = CornerRadius(2.dp.toPx())
+
+                // Measure every event once; the drawing below only paints
+                val lines = mutableListOf<EventLine>()
+                val hidden = IntArray(7)
+                for ((index, date) in days.withIndex()) {
+                    val (column, row) = cellOf(index)
+                    val left = column * cellWidth + pad
+                    var y = row * cellHeight + eventsTop
+                    val bottom = (row + 1) * cellHeight - pad / 2
+                    val fill = if (date.isWeekend()) cells.weekend else cells.day
+                    val dayEvents = events.getOrElse(index) { emptyList() }
+                    for ((k, event) in dayEvents.withIndex()) {
+                        // Room for the "+N" line while more events follow
+                        val reserve = if (k < dayEvents.lastIndex) moreHeight else 0f
+                        val maxLines =
+                            minOf(
+                                EVENT_MAX_LINES,
+                                floor((bottom - reserve - y) / lineHeight).toInt(),
+                            )
+                        if (maxLines < 1) {
+                            hidden[index] = dayEvents.size - k
+                            break
+                        }
+                        // Tasks start with their check box instead of the calendar pattern
+                        val x = if (event.taskId != null) left else left + indent
+                        val layout =
+                            measurer.measure(
+                                text = eventText(event, date, zone, is24Hr),
+                                style = style,
+                                overflow = TextOverflow.Ellipsis,
+                                maxLines = maxLines,
+                                constraints =
+                                    Constraints(
+                                        maxWidth =
+                                            (column * cellWidth + cellWidth - pad - x)
+                                                .toInt()
+                                                .coerceAtLeast(1)
+                                    ),
+                            )
+                        lines +=
+                            EventLine(
+                                event = event,
+                                layout = layout,
+                                topLeft = Offset(x, y),
+                                color = readable(eventColor(event.color), fill, colors.onSurface),
+                            )
+                        y += layout.size.height + gap
+                    }
+                }
+                hits.areas =
+                    lines.map { line ->
+                        val left = if (line.topLeft.x < cellWidth) 0f else cellWidth
+                        Rect(
+                            left,
+                            line.topLeft.y - gap / 2,
+                            left + cellWidth,
+                            line.topLeft.y + line.layout.size.height + gap / 2,
+                        ) to line.event
+                    }
+
+                onDrawBehind {
+                    for ((index, date) in days.withIndex()) {
+                        val (column, row) = cellOf(index)
+                        val left = column * cellWidth
+                        val top = row * cellHeight
+                        val isToday = date == today
+                        drawCell(
+                            cells = cells,
+                            fill = if (date.isWeekend()) cells.weekend else cells.day,
+                            isToday = isToday,
+                            topLeft = Offset(left, top),
+                            size = Size(cellWidth, cellHeight),
+                        )
+                        val number = date.day.toString()
+                        painter.draw(
+                            scope = this,
+                            text = number,
+                            x = left + pad,
+                            baseline = top + headerBaseline,
+                            clipRight = left + cellWidth - pad,
+                            color = if (isToday) colors.primary else colors.onSurface,
+                            sizePx = numberSize,
+                            bold = true,
+                        )
+                        // The month after the name of the first day, and of the first of a month
+                        val name =
+                            Formatting.weekdayLong(date.dayOfWeek) +
+                                if (index == 0 || date.day == 1)
+                                    " / " + Formatting.monthShort(date.month).uppercase()
+                                else ""
+                        painter.draw(
+                            scope = this,
+                            text = name,
+                            x =
+                                left +
+                                    pad +
+                                    painter.width(number, numberSize, bold = true) +
+                                    5.dp.toPx(),
+                            baseline = top + headerBaseline,
+                            clipRight = left + cellWidth - pad,
+                            color = colors.primary,
+                            sizePx = nameSize,
+                            bold = isToday,
+                        )
+                        if (hidden[index] > 0) {
+                            painter.draw(
+                                scope = this,
+                                text = "+${hidden[index]}",
+                                x = left + pad,
+                                baseline = top + cellHeight - pad / 2 - moreSize * 0.4f,
+                                clipRight = left + cellWidth - pad,
+                                color = colors.onSurfaceVariant,
+                                sizePx = moreSize,
+                                bold = true,
+                            )
+                        }
+                    }
+                    for (line in lines) {
+                        if (line.event.taskId == null) {
+                            val firstLine = line.layout.getLineBottom(0) - line.layout.getLineTop(0)
+                            drawEventBlock(
+                                pattern = line.event.pattern,
+                                color = line.color,
+                                topLeft =
+                                    Offset(
+                                        line.topLeft.x - indent,
+                                        line.topLeft.y + (firstLine - swatch.height) / 2,
+                                    ),
+                                size = swatch,
+                                corner = corner,
+                                tint = 0.7f,
+                                bar = 0f,
+                                background = Color.Transparent,
+                            )
+                        }
+                        drawText(line.layout, color = line.color, topLeft = line.topLeft)
+                    }
+                }
+            }
+    )
+}
+
+/** "20:00 Title" on the day an event starts, the title alone on its other days. */
+private fun eventText(
+    event: DayEvent,
+    date: LocalDate,
+    zone: ZoneId,
+    is24Hr: Boolean,
+): AnnotatedString = buildAnnotatedString {
+    if (!event.allDay && event.startDay == date) {
+        withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
+            append(Formatting.time(event.begin, zone, is24Hr))
+        }
+        append(" ")
+    }
+    append(event.title.ifBlank { "—" })
+}
+
+/**
+ * [color], moved towards [text] until it stands out from [background] enough to read: category
+ * colors are chosen for blocks, and some are too light or too dark for text.
+ */
+private fun readable(color: Color, background: Color, text: Color): Color {
+    fun contrast(a: Color, b: Color): Float {
+        val la = a.luminance() + 0.05f
+        val lb = b.luminance() + 0.05f
+        return maxOf(la, lb) / minOf(la, lb)
+    }
+    var result = color
+    var mix = 0f
+    while (contrast(result, background) < 3f && mix < 0.8f) {
+        mix += 0.2f
+        result = lerp(color, text, mix)
+    }
+    return result
+}
+
+/**
+ * The eighth cell: the days of the week side by side, with the hours from top to bottom and a block
+ * per event, to see the busy and free times at a glance. A tap on a block opens its event, a tap
+ * beside them creates an event at that hour.
+ */
+@Composable
+private fun HourOverview(
+    days: List<LocalDate>,
+    today: LocalDate,
+    boxes: List<TimedBox>,
+    nowMinute: Int,
+    canCreate: Boolean,
+    onSelect: (LocalDate) -> Unit,
+    onOpenEvent: (DayEvent) -> Unit,
+    onCreateAt: (LocalDate, Int?) -> Unit,
+    modifier: Modifier,
+) {
+    val colors = MaterialTheme.colorScheme
+    val cells = rememberCellColors()
+    val painter = remember { GridTextPainter() }
+    val firstHour =
+        remember(boxes) {
+            minOf(OVERVIEW_FIRST_HOUR, boxes.minOfOrNull { it.startMinute / 60 } ?: 24)
+        }
+    val lastHour =
+        remember(boxes) {
+            maxOf(OVERVIEW_LAST_HOUR, boxes.maxOfOrNull { (it.endMinute + 59) / 60 } ?: 0)
+        }
+    val labels =
+        remember(days) {
+            days.map { Formatting.weekdayLong(it.dayOfWeek).take(1) + it.day.toString() }
+        }
+    val todayColumn = days.indexOf(today)
+    val currentOnSelect by rememberUpdatedState(onSelect)
+    val currentOnOpen by rememberUpdatedState(onOpenEvent)
+    val currentOnCreate by rememberUpdatedState(onCreateAt)
+    val currentCanCreate by rememberUpdatedState(canCreate)
+
+    /** The grid of hours inside the cell, below the band of day labels. */
+    fun grid(width: Float, height: Float, gap: Float, header: Float) =
+        Rect(gap, gap + header, width - gap, height - gap)
+
+    Box(
+        modifier =
+            modifier.pointerInput(days, boxes, firstHour, lastHour) {
+                detectTapGestures { offset ->
+                    val area =
+                        grid(size.width.toFloat(), size.height.toFloat(), 1.dp.toPx(), 18.dp.toPx())
+                    val columnWidth = area.width / 7
+                    val column = ((offset.x - area.left) / columnWidth).toInt().coerceIn(0, 6)
+                    if (offset.y < area.top) return@detectTapGestures currentOnSelect(days[column])
+                    val hourHeight = area.height / (lastHour - firstHour)
+                    val minute = firstHour * 60 + ((offset.y - area.top) / hourHeight * 60).toInt()
                     val hit =
                         boxes.lastOrNull { box ->
-                            val left =
-                                gutter +
-                                    box.column * columnWidth +
-                                    box.slot * columnWidth / box.slots
-                            val top = box.startMinute / 60f * hourHeight
-                            val bottom = box.endMinute / 60f * hourHeight
-                            offset.x >= left &&
-                                offset.x < left + columnWidth / box.slots &&
-                                offset.y >= top &&
-                                offset.y < bottom
+                            val slotWidth = columnWidth / box.slots
+                            val slotLeft =
+                                area.left + box.column * columnWidth + box.slot * slotWidth
+                            box.column == column &&
+                                minute in box.startMinute until box.endMinute &&
+                                offset.x >= slotLeft &&
+                                offset.x < slotLeft + slotWidth
                         }
-                    val column = ((offset.x - gutter) / columnWidth).toInt().coerceIn(0, 6)
                     when {
                         hit != null -> currentOnOpen(hit.event)
                         currentCanCreate ->
-                            currentOnCreate(
-                                days[column],
-                                (offset.y / hourHeight).toInt().coerceIn(0, 23),
-                            )
+                            currentOnCreate(days[column], (minute / 60).coerceIn(0, 23))
                         else -> currentOnSelect(days[column])
                     }
                 }
             }
     ) {
-        // Hours and events: redrawn only when the week's events change
         Spacer(
             modifier =
-                Modifier.fillMaxSize().graphicsLayer().drawWithCache {
-                    val gutter = GUTTER.toPx()
-                    val columnWidth = (size.width - gutter) / 7
-                    val hourHeight = size.height / 24f
-                    val labelSize = 10.sp.toPx()
-                    // On a short screen, label every second or third hour so that labels never
-                    // touch
-                    val labelStep =
-                        listOf(1, 2, 3, 4, 6).first {
-                            it * hourHeight >= labelSize * 1.5f || it == 6
-                        }
-                    val minTitleSize = 7.sp.toPx()
-                    val titleSize = 11.sp.toPx()
-                    val timeSize = 10.sp.toPx()
-                    val inset = 1.dp.toPx()
-                    val margin = 2.dp.toPx()
-                    val bar = 3.dp.toPx()
-                    val corner = CornerRadius(4.dp.toPx())
-                    val line = colors.outlineVariant.copy(alpha = 0.5f)
+                Modifier.matchParentSize().graphicsLayer().drawWithCache {
+                    val gap = 1.dp.toPx()
+                    val header = 18.dp.toPx()
+                    val area = grid(size.width, size.height, gap, header)
+                    val columnWidth = area.width / 7
+                    val hourHeight = area.height / (lastHour - firstHour)
+                    val labelSize = 11.sp.toPx()
+                    val hourSize = 8.sp.toPx()
+                    val corner = CornerRadius(8.dp.toPx())
+                    val stripe = colors.onSurface.copy(alpha = 0.05f)
+                    val line = colors.outlineVariant.copy(alpha = 0.6f)
+                    val dash = PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(), 3.dp.toPx()))
                     onDrawBehind {
-                        for (hour in 0 until 24) {
-                            val y = hour * hourHeight
-                            drawLine(line, Offset(gutter, y), Offset(size.width, y), 1f)
-                            if (hour > 0 && hour % labelStep == 0) {
-                                painter.draw(
-                                    scope = this,
-                                    text = hourLabels[hour],
-                                    x = gutter / 2,
-                                    baseline = y + labelSize * 0.35f,
-                                    clipRight = gutter,
-                                    color = colors.onSurfaceVariant,
-                                    sizePx = labelSize,
-                                    centered = true,
-                                )
-                            }
-                        }
-                        for (column in 1 until 7) {
-                            val x = gutter + column * columnWidth
-                            drawLine(line, Offset(x, 0f), Offset(x, size.height), 1f)
-                        }
-                        for (box in boxes) {
-                            val event = box.event
-                            val color = eventColor(event.color)
-                            val width = columnWidth / box.slots
-                            val left = gutter + box.column * columnWidth + box.slot * width + inset
-                            val top = box.startMinute / 60f * hourHeight + inset
-                            val height =
-                                (box.endMinute - box.startMinute) / 60f * hourHeight - 2 * inset
-                            val right = left + width - 2 * inset
-                            val textX = left + bar + 2 * inset
-                            // Short events get a smaller title, the shortest only their color
-                            val eventTitleSize = minOf(titleSize, height / 1.25f)
-                            val showTitle = eventTitleSize >= minTitleSize
-                            val titleBaseline = top + eventTitleSize * 1.05f
-                            val time =
-                                if (height > titleSize * 2.6f) {
-                                    Formatting.time(
-                                        event.begin,
-                                        java.time.ZoneId.systemDefault(),
-                                        is24Hr,
-                                    )
-                                } else null
-                            val timeBaseline = top + titleSize * 1.1f + timeSize * 1.25f
-                            // The lines of the pattern stop around the title and the time
-                            val titleArea =
-                                if (!showTitle) Rect.Zero
-                                else
-                                    painter.clearArea(
-                                        pattern = event.pattern,
-                                        text = event.title,
-                                        sizePx = eventTitleSize,
-                                        x = textX,
-                                        clipRight = right,
-                                        bottom = titleBaseline + eventTitleSize * 0.3f + margin,
-                                        margin = margin,
-                                        bold = true,
-                                    )
-                            val timeArea =
-                                if (time == null) Rect.Zero
-                                else
-                                    painter.clearArea(
-                                        pattern = event.pattern,
-                                        text = time,
-                                        sizePx = timeSize,
-                                        x = textX,
-                                        clipRight = right,
-                                        bottom = timeBaseline + timeSize * 0.3f + margin,
-                                        margin = margin,
-                                    )
-                            drawEventBlock(
-                                pattern = event.pattern,
-                                color = color,
-                                topLeft = Offset(left, top),
-                                size = Size(width - 2 * inset, height),
-                                corner = corner,
-                                tint = 0.35f,
-                                bar = bar,
-                                background = colors.background,
-                                // Both areas start at 0: together they reach the further end
-                                clear =
-                                    Rect(
-                                        0f,
-                                        0f,
-                                        maxOf(titleArea.right, timeArea.right),
-                                        maxOf(titleArea.bottom, timeArea.bottom),
-                                    ),
+                        drawCell(cells, cells.day, false, Offset.Zero, size)
+                        // The band of day labels, square at its bottom
+                        drawRoundRect(
+                            colors.secondaryContainer,
+                            Offset(gap, gap),
+                            Size(area.width, header),
+                            corner,
+                        )
+                        drawRect(
+                            colors.secondaryContainer,
+                            Offset(gap, gap + header / 2),
+                            Size(area.width, header / 2),
+                        )
+                        for ((index, label) in labels.withIndex()) {
+                            painter.draw(
+                                scope = this,
+                                text = label,
+                                x = area.left + columnWidth * (index + 0.5f),
+                                baseline = gap + header / 2 + labelSize * 0.36f,
+                                clipRight = area.left + columnWidth * (index + 1),
+                                color =
+                                    if (index == todayColumn) colors.primary
+                                    else colors.onSecondaryContainer,
+                                sizePx = labelSize,
+                                bold = index == todayColumn,
+                                centered = true,
                             )
-                            if (showTitle) {
-                                painter.draw(
-                                    scope = this,
-                                    text = event.title,
-                                    x = textX,
-                                    baseline = titleBaseline,
-                                    clipRight = right,
-                                    color = colors.onSurface,
-                                    sizePx = eventTitleSize,
-                                    bold = true,
+                        }
+                        clipRect(area.left, area.top, area.right, area.bottom) {
+                            for ((index, day) in days.withIndex()) {
+                                if (!day.isWeekend()) continue
+                                drawRect(
+                                    cells.weekend,
+                                    Offset(area.left + index * columnWidth, area.top),
+                                    Size(columnWidth, area.height),
                                 )
                             }
-                            if (time != null) {
+                            for (hour in firstHour until lastHour) {
+                                val y = area.top + (hour - firstHour) * hourHeight
+                                if (hour % 2 == 1) {
+                                    drawRect(
+                                        stripe,
+                                        Offset(area.left, y),
+                                        Size(area.width, hourHeight),
+                                    )
+                                }
+                                if (hour > firstHour && hour % 4 == 0) {
+                                    drawLine(
+                                        line,
+                                        Offset(area.left, y),
+                                        Offset(area.right, y),
+                                        1f,
+                                        pathEffect = dash,
+                                    )
+                                }
+                            }
+                            for (column in 1 until 7) {
+                                val x = area.left + column * columnWidth
+                                drawLine(line, Offset(x, area.top), Offset(x, area.bottom), 1f)
+                            }
+                            for (box in boxes) {
+                                val slotWidth = columnWidth / box.slots
+                                val top =
+                                    area.top + (box.startMinute - firstHour * 60) / 60f * hourHeight
+                                val height =
+                                    maxOf(
+                                        (box.endMinute - box.startMinute) / 60f * hourHeight,
+                                        2.dp.toPx(),
+                                    )
+                                drawEventBlock(
+                                    pattern = box.event.pattern,
+                                    color = eventColor(box.event.color),
+                                    topLeft =
+                                        Offset(
+                                            area.left +
+                                                box.column * columnWidth +
+                                                box.slot * slotWidth +
+                                                gap,
+                                            top + gap / 2,
+                                        ),
+                                    size = Size(slotWidth - 2 * gap, height - gap),
+                                    corner = CornerRadius(2.dp.toPx()),
+                                    tint = 0.85f,
+                                    bar = 0f,
+                                    background = Color.Transparent,
+                                )
+                            }
+                            // The hours of the dashed lines, small, at the left
+                            for (hour in firstHour + 1 until lastHour) {
+                                if (hour % 4 != 0) continue
                                 painter.draw(
                                     scope = this,
-                                    text = time,
-                                    x = textX,
-                                    baseline = timeBaseline,
-                                    clipRight = right,
+                                    text = hour.toString(),
+                                    x = area.left + 2.dp.toPx(),
+                                    baseline =
+                                        area.top + (hour - firstHour) * hourHeight - 1.dp.toPx(),
+                                    clipRight = area.left + columnWidth,
                                     color = colors.onSurfaceVariant,
-                                    sizePx = timeSize,
+                                    sizePx = hourSize,
                                 )
                             }
                         }
@@ -545,23 +648,26 @@ private fun HourGrid(
                 }
         )
         // The current time: its own small layer, redrawn once a minute
-        if (todayColumn >= 0) {
+        if (todayColumn >= 0 && nowMinute >= firstHour * 60 && nowMinute < lastHour * 60) {
             val now = colors.error
             Spacer(
                 modifier =
-                    Modifier.fillMaxSize().drawWithCache {
-                        val gutter = GUTTER.toPx()
-                        val columnWidth = (size.width - gutter) / 7
-                        val y = nowMinute / 60f * (size.height / 24f)
-                        val left = gutter + todayColumn * columnWidth
+                    Modifier.matchParentSize().drawWithCache {
+                        val area = grid(size.width, size.height, 1.dp.toPx(), 18.dp.toPx())
+                        val columnWidth = area.width / 7
+                        val y =
+                            area.top +
+                                (nowMinute - firstHour * 60) / 60f *
+                                    (area.height / (lastHour - firstHour))
+                        val left = area.left + todayColumn * columnWidth
                         onDrawBehind {
                             drawLine(
                                 now,
                                 Offset(left, y),
                                 Offset(left + columnWidth, y),
-                                2.dp.toPx(),
+                                1.5.dp.toPx(),
                             )
-                            drawCircle(now, 4.dp.toPx(), Offset(left, y))
+                            drawCircle(now, 2.5.dp.toPx(), Offset(left, y))
                         }
                     }
             )

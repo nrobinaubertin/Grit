@@ -125,6 +125,20 @@ class TasksViewModel(
                     }
                 }
 
+                is TaskAction.MoveTask -> {
+                    // The task as stored now, at the end of its new category
+                    val task = repo.getTaskById(action.task.id)
+                    if (task != null && task.categoryId != action.category.id) {
+                        val index =
+                            repo
+                                .getTasks()
+                                .filter { it.categoryId == action.category.id }
+                                .maxOfOrNull { it.index }
+                                ?.plus(1) ?: 0
+                        repo.upsertTask(task.copy(categoryId = action.category.id, index = index))
+                    }
+                }
+
                 is ReorderCategories -> {
                     for ((first, second) in action.mapping) {
                         upsertCategory(second.copy(index = first))

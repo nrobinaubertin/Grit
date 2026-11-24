@@ -186,6 +186,9 @@ sealed interface CalendarAction {
 
     data class SetTasksVisible(val visible: Boolean) : CalendarAction
 
+    /** The chips under the views in a new order: [ids] from left to right. */
+    data class ReorderChips(val ids: List<Long>) : CalendarAction
+
     /** Marks the task of a calendar entry as done. */
     data class CompleteTask(val taskId: Long) : CalendarAction
 
@@ -281,16 +284,13 @@ class CalendarViewModel(
                 val first = week.minus(DatePeriod(days = 7))
                 val last = week.plus(DatePeriod(days = 14))
                 eventsBetween(first, last).map { events ->
+                    val days = byDay(events, first, last)
                     (-1..1).associate { offset ->
                         val start = week.plus(DatePeriod(days = 7 * offset))
                         start to
                             WeekData(
-                                band =
-                                    layoutWeek(
-                                        start,
-                                        events.filter { it.isBandEvent() },
-                                        WEEK_BAND_LANES,
-                                    ),
+                                days =
+                                    List(7) { days[start.plus(DatePeriod(days = it))].orEmpty() },
                                 boxes = layoutTimed(start, events, ZoneId.systemDefault()),
                             )
                     }
@@ -325,7 +325,7 @@ class CalendarViewModel(
             combine(
                 datedTasks.map { it.isNotEmpty() }.distinctUntilChanged(),
                 tasksVisible,
-                store.patternsFlow(),
+                combine(store.patternsFlow(), store.chipOrderFlow(), ::Pair),
                 ::Triple,
             ),
         ) {
@@ -333,7 +333,8 @@ class CalendarViewModel(
             accounts,
             collections,
             (running, pending, defaultView),
-            (hasTasks, showTasks, patterns) ->
+            (hasTasks, showTasks, patternsAndOrder) ->
+            val (patterns, chipOrder) = patternsAndOrder
             val localAccount = accounts.firstOrNull { it.local }?.id
             val events = collections.filter { it.supportsEvents }
             val calendars =
@@ -354,16 +355,22 @@ class CalendarViewModel(
                 hasCalendars = collections.isNotEmpty() || hasTasks,
                 hasServer = accounts.any { !it.local },
                 calendars =
-                    if (!hasTasks) calendars
-                    else
-                        calendars +
-                            CalendarFilterItem(
-                                id = TASKS_FILTER_ID,
-                                name = "",
-                                visible = showTasks,
-                                local = true,
-                                tasks = true,
-                            ),
+                    (if (!hasTasks) calendars
+                        else
+                            calendars +
+                                CalendarFilterItem(
+                                    id = CalendarStore.TASKS_CHIP_ID,
+                                    name = "",
+                                    visible = showTasks,
+                                    local = true,
+                                    tasks = true,
+                                ))
+                        // The order of the user, then the chips that it does not know yet
+                        .withIndex()
+                        .sortedWith(
+                            compareBy({ chipOrder[it.value.id] ?: Int.MAX_VALUE }, { it.index })
+                        )
+                        .map { it.value },
                 canCreate = events.any { it.canWrite && it.visible },
                 syncing = running,
                 error =
@@ -468,6 +475,8 @@ class CalendarViewModel(
                 viewModelScope.launch { syncManager.setVisible(action.id, action.visible) }
             is CalendarAction.SetTasksVisible ->
                 viewModelScope.launch { store.setTasksVisible(action.visible) }
+            is CalendarAction.ReorderChips ->
+                viewModelScope.launch { store.setChipOrder(action.ids) }
             is CalendarAction.CompleteTask ->
                 viewModelScope.launch {
                     local.update { it.copy(details = null) }
@@ -509,7 +518,6 @@ class CalendarViewModel(
 }
 
 private const val AGENDA_PAGE_DAYS = 60
-private const val TASKS_FILTER_ID = -1L
 
 /** The start of the title of a task in the views: an empty check box. */
 internal const val TASK_MARK = "\u2610 "
@@ -521,9 +529,8 @@ internal const val TASK_MARK = "\u2610 "
 private const val TASK_MINUTES = 60
 private const val DAY_MS = 24 * 60 * 60 * 1000L
 
-/** Lanes per day in the month grid, and in the all-day band of the week view. */
+/** Lines of events per day in the month grid. */
 const val MONTH_LANES = 4
-const val WEEK_BAND_LANES = 3
 
 internal fun today(): LocalDate = java.time.LocalDate.now().toKotlinLocalDate()
 

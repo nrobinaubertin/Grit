@@ -29,7 +29,10 @@ import kotlinx.datetime.DayOfWeek
 import org.koin.core.annotation.Single
 
 @Single(binds = [SettingsDatastore::class])
-class SettingsDatastoreImpl(private val datastore: DataStore<Preferences>) : SettingsDatastore {
+class SettingsDatastoreImpl(
+    private val datastore: DataStore<Preferences>,
+    private val systemTimeFormat: SystemTimeFormat,
+) : SettingsDatastore {
 
     companion object {
         private val startOfWeekKey = stringPreferencesKey("start_of_week")
@@ -61,8 +64,9 @@ class SettingsDatastoreImpl(private val datastore: DataStore<Preferences>) : Set
         datastore.edit { prefs -> prefs[startingSectionKey] = page.name }
     }
 
+    /** Until the user chooses in the settings, the clock follows the device (calendar fork). */
     override fun getIs24Hr(): Flow<Boolean> =
-        datastore.data.map { prefs -> prefs[is24HrKey] == true }
+        datastore.data.map { prefs -> prefs[is24HrKey] ?: systemTimeFormat.is24Hour() }
 
     override suspend fun setIs24Hr(pref: Boolean) {
         datastore.edit { prefs -> prefs[is24HrKey] = pref }

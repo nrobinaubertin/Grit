@@ -33,6 +33,9 @@ sealed interface TaskAction {
 
     data class ReorderTasks(val mapping: List<Pair<Int, Task>>) : TaskAction
 
+    /** Moves [task] to the end of [category] (calendar fork). */
+    data class MoveTask(val task: Task, val category: Category) : TaskAction
+
     data class ReorderCategories(val mapping: List<Pair<Int, Category>>) : TaskAction
 
     data class UpsertTask(val task: Task) : TaskAction

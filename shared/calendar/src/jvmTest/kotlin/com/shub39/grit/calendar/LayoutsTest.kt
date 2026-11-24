@@ -19,6 +19,7 @@ package com.shub39.grit.calendar
 import com.shub39.grit.calendar.ui.home.DayEvent
 import com.shub39.grit.calendar.ui.home.layoutTimed
 import com.shub39.grit.calendar.ui.home.layoutWeek
+import com.shub39.grit.calendar.ui.home.placeByTime
 import java.time.ZoneId
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -70,14 +71,37 @@ class LayoutsTest {
             event("Trip", at(10, 0), at(13, 0), allDay = true, endDay = LocalDate(2026, 11, 12))
         val dentist = event("Dentist", at(11, 9), at(11, 10))
         val lunch = event("Lunch", at(9, 12), at(9, 13))
-        val lanes = layoutWeek(monday, listOf(dentist, lunch, trip), maxLanes = 4)
+        val lanes = layoutWeek(monday, listOf(dentist, lunch, trip), maxLanes = 4, zone)
         val tripBar = lanes.segments.single { it.event == trip }
         assertEquals(1, tripBar.startColumn)
         assertEquals(3, tripBar.endColumn)
-        assertEquals(0, tripBar.lane)
-        assertEquals(1, lanes.segments.single { it.event == dentist }.lane)
-        assertEquals(0, lanes.segments.single { it.event == lunch }.lane)
+        assertEquals(0f, tripBar.position)
+        // Below the bar of its day. 9:00 is 3/16 of the way from 6:00 to 22:00
+        assertEquals(1f + 3f / 16 * 2, lanes.segments.single { it.event == dentist }.position)
+        // No bar on Monday: noon is 6/16 of the way down the four lines
+        assertEquals(6f / 16 * 3, lanes.segments.single { it.event == lunch }.position)
         assertTrue(lanes.hidden.all { it == 0 })
+    }
+
+    @Test
+    fun `events are lower for a later time and never overlap`() {
+        val early = event("Early", at(9, 7), at(9, 8))
+        val soon = event("Soon after", at(9, 7, 30), at(9, 8))
+        val night = event("Night", at(9, 21), at(9, 22))
+        val positions =
+            layoutWeek(monday, listOf(night, soon, early), maxLanes = 4, zone).segments.associate {
+                it.event.title to it.position
+            }
+        assertEquals(1f / 16 * 3, positions.getValue("Early"))
+        // One line below the event before it, because it would overlap at its own time
+        assertEquals(positions.getValue("Early") + 1f, positions.getValue("Soon after"))
+        assertEquals(15f / 16 * 3, positions.getValue("Night"))
+    }
+
+    @Test
+    fun `late events move up to stay in the cell`() {
+        assertEquals(listOf(1f, 2f, 3f), placeByTime(listOf(1f, 1f, 1f), top = 0, bottom = 4))
+        assertEquals(listOf(1f, 2f), placeByTime(listOf(0f, 1f), top = 1, bottom = 3))
     }
 
     @Test
@@ -90,7 +114,7 @@ class LayoutsTest {
                 allDay = true,
                 endDay = LocalDate(2026, 11, 17),
             )
-        val bar = layoutWeek(monday, listOf(holidays), maxLanes = 4).segments.single()
+        val bar = layoutWeek(monday, listOf(holidays), maxLanes = 4, zone).segments.single()
         assertEquals(0, bar.startColumn)
         assertEquals(6, bar.endColumn)
         assertTrue(bar.continuesBefore)
@@ -100,10 +124,10 @@ class LayoutsTest {
     @Test
     fun `a full day keeps its last lane for the hidden count`() {
         val events = (0 until 6).map { event("E$it", at(12, 8 + it), at(12, 9 + it)) }
-        val lanes = layoutWeek(monday, events, maxLanes = 4)
+        val lanes = layoutWeek(monday, events, maxLanes = 4, zone)
         assertEquals(3, lanes.segments.size)
         assertEquals(3, lanes.hidden[3])
-        assertTrue(lanes.segments.all { it.lane < 3 })
+        assertEquals(listOf(0f, 1f, 2f), lanes.segments.map { it.position })
     }
 
     @Test

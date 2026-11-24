@@ -127,19 +127,20 @@ class TaskColorStore(db: CalendarDatabase, @Provided taskRepo: TaskRepo) : TaskC
             modifier = Modifier.padding(vertical = 8.dp),
         ) {
             Text(stringResource(Res.string.task_color), style = MaterialTheme.typography.titleSmall)
+            // No color: an empty circle, above the palette
+            Swatch(
+                fill = null,
+                selected = selected == null,
+                outline = colors.outline,
+                ring = colors.onSurface,
+                label = noColor,
+                onClick = { onSelect(null) },
+            )
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
+                maxItemsInEachRow = CategoryColors.PALETTE_COLUMNS,
             ) {
-                // No color: an empty circle
-                Swatch(
-                    fill = null,
-                    selected = selected == null,
-                    outline = colors.outline,
-                    ring = colors.onSurface,
-                    label = noColor,
-                    onClick = { onSelect(null) },
-                )
                 for (argb in PALETTE) {
                     Swatch(
                         fill = Color(argb),

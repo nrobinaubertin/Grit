@@ -23,6 +23,7 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -58,20 +59,30 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layoutId
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import com.shub39.grit.calendar.ui.Formatting
 import com.shub39.grit.calendar.ui.LightSelector
 import com.shub39.grit.calendar.ui.LightTopBar
@@ -126,8 +137,9 @@ fun CalendarHomeScreen(
                 }
             }
 
+            // The week view creates an event with a tap on a day or an hour
             AnimatedVisibility(
-                visible = state.canCreate,
+                visible = state.canCreate && state.mode != CalendarMode.Week,
                 enter = fadeIn() + scaleIn(),
                 exit = fadeOut() + scaleOut(),
                 modifier =
@@ -235,7 +247,6 @@ private fun CalendarContent(
                 Box(Modifier.layoutId(CalendarMode.Week)) {
                     WeekPager(
                         week = state.week,
-                        selectedDate = state.selectedDate,
                         today = state.today,
                         firstDayOfWeek = state.firstDayOfWeek,
                         weeks = state.weeks,
@@ -525,47 +536,127 @@ internal fun timeText(event: DayEvent, is24Hr: Boolean): String {
 
 /**
  * One chip per calendar under the views, and one for the tasks with a date: a tap shows or hides
- * it, and each chip shows the pattern of its calendar, as a legend.
+ * it, and each chip shows the pattern of its calendar, as a legend. A long press, then a drag,
+ * moves a chip: the new order stays.
  */
 @Composable
 private fun CalendarChips(calendars: List<CalendarFilterItem>, onAction: (CalendarAction) -> Unit) {
     if (calendars.isEmpty()) return
     val sample = MaterialTheme.colorScheme.onSurfaceVariant
+    val haptics = LocalHapticFeedback.current
+    val spacing = with(LocalDensity.current) { ChipSpacing.toPx() }
+    val currentCalendars by rememberUpdatedState(calendars)
+    val currentOnAction by rememberUpdatedState(onAction)
+    // The order of the ids while a chip moves, and after the drop until the saved order arrives
+    var held by remember { mutableStateOf<List<Long>?>(null) }
+    var dragged by remember { mutableStateOf<Long?>(null) }
+    var offset by remember { mutableFloatStateOf(0f) }
+    val widths = remember { mutableMapOf<Long, Int>() }
+    LaunchedEffect(calendars) {
+        if (dragged == null && held == calendars.map { it.id }) held = null
+    }
+    val shown =
+        held?.let { ids ->
+            calendars.sortedBy { ids.indexOf(it.id).let { i -> if (i < 0) Int.MAX_VALUE else i } }
+        } ?: calendars
     Row(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(ChipSpacing),
         modifier =
             Modifier.fillMaxWidth()
                 .horizontalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp),
     ) {
-        for (calendar in calendars) {
-            FilterChip(
-                selected = calendar.visible,
-                onClick = {
-                    onAction(
-                        if (calendar.tasks) CalendarAction.SetTasksVisible(!calendar.visible)
-                        else CalendarAction.SetCalendarVisible(calendar.id, !calendar.visible)
-                    )
-                },
-                label = {
-                    Text(
-                        if (calendar.tasks) stringResource(Res.string.tasks_chip)
-                        else calendar.name,
-                        maxLines = 1,
-                    )
-                },
-                leadingIcon = {
-                    if (calendar.tasks) {
-                        Text(TASK_MARK.trim())
-                    } else {
-                        PatternSwatch(
-                            calendar.pattern,
-                            sample,
-                            Modifier.alpha(if (calendar.visible) 1f else 0.4f),
+        for (calendar in shown) {
+            key(calendar.id) {
+                val moving = dragged == calendar.id
+                FilterChip(
+                    selected = calendar.visible,
+                    onClick = {
+                        onAction(
+                            if (calendar.tasks) CalendarAction.SetTasksVisible(!calendar.visible)
+                            else CalendarAction.SetCalendarVisible(calendar.id, !calendar.visible)
                         )
-                    }
-                },
-            )
+                    },
+                    label = {
+                        Text(
+                            if (calendar.tasks) stringResource(Res.string.tasks_chip)
+                            else calendar.name,
+                            maxLines = 1,
+                        )
+                    },
+                    leadingIcon = {
+                        if (calendar.tasks) {
+                            Text(TASK_MARK.trim())
+                        } else {
+                            PatternSwatch(
+                                calendar.pattern,
+                                sample,
+                                Modifier.alpha(if (calendar.visible) 1f else 0.4f),
+                            )
+                        }
+                    },
+                    modifier =
+                        Modifier.onSizeChanged { widths[calendar.id] = it.width }
+                            .zIndex(if (moving) 1f else 0f)
+                            .graphicsLayer {
+                                translationX = if (moving) offset else 0f
+                                val scale = if (moving) 1.08f else 1f
+                                scaleX = scale
+                                scaleY = scale
+                            }
+                            .pointerInput(calendar.id) {
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = {
+                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        held = held ?: currentCalendars.map { it.id }
+                                        dragged = calendar.id
+                                        offset = 0f
+                                    },
+                                    onDrag = { change, amount ->
+                                        change.consume()
+                                        offset += amount.x
+                                        // Past the middle of a neighbour, the chip takes its place
+                                        val ids = held ?: return@detectDragGesturesAfterLongPress
+                                        val index = ids.indexOf(calendar.id)
+                                        val next = ids.getOrNull(index + 1)
+                                        val previous = ids.getOrNull(index - 1)
+                                        val nextWidth = next?.let { widths[it] } ?: 0
+                                        val previousWidth = previous?.let { widths[it] } ?: 0
+                                        if (next != null && offset > nextWidth / 2f) {
+                                            held = ids.moved(index, index + 1)
+                                            offset -= nextWidth + spacing
+                                        } else if (
+                                            previous != null && offset < -previousWidth / 2f
+                                        ) {
+                                            held = ids.moved(index, index - 1)
+                                            offset += previousWidth + spacing
+                                        }
+                                    },
+                                    onDragEnd = {
+                                        dragged = null
+                                        offset = 0f
+                                        val ids = held
+                                        if (ids == null || ids == currentCalendars.map { it.id }) {
+                                            held = null
+                                        } else {
+                                            currentOnAction(CalendarAction.ReorderChips(ids))
+                                        }
+                                    },
+                                    onDragCancel = {
+                                        dragged = null
+                                        offset = 0f
+                                        held = null
+                                    },
+                                )
+                            },
+                )
+            }
         }
     }
 }
+
+private val ChipSpacing = 8.dp
+
+/** This list with the item at [from] moved to [to]. */
+private fun <T> List<T>.moved(from: Int, to: Int): List<T> =
+    toMutableList().apply { add(to, removeAt(from)) }

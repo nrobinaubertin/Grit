@@ -29,6 +29,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -43,7 +44,11 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -166,30 +171,82 @@ private fun MonthPage(
                 }
             }
     ) {
-        SelectionLayer(days.indexOf(selectedDate), Modifier.matchParentSize())
         MonthDrawing(month, days, rows, today, Modifier.matchParentSize())
+        SelectionLayer(days.indexOf(selectedDate), 7, Modifier.matchParentSize())
     }
 }
 
-/** The highlight behind the selected day. It redraws alone when the selection changes. */
+/**
+ * The fills of the day cells. Days of the shown month are lighter than the days of the months
+ * around it, and today has a tint of the theme color.
+ */
+@Immutable
+internal class CellColors(
+    val day: Color,
+    val otherMonth: Color,
+    val weekend: Color,
+    val today: Color,
+    val selection: Color,
+)
+
 @Composable
-private fun SelectionLayer(index: Int, modifier: Modifier) {
-    val color = MaterialTheme.colorScheme.surfaceContainerHighest
+internal fun rememberCellColors(): CellColors {
+    val colors = MaterialTheme.colorScheme
+    return remember(colors) {
+        // Dark themes: the shown days are lighter than the page. Light themes: the other days are
+        // darker than the page. Either way, the other days are the darker ones.
+        val dark = colors.background.luminance() < 0.5f
+        CellColors(
+            day = if (dark) colors.surfaceContainer else colors.surfaceContainerLowest,
+            otherMonth = if (dark) colors.surfaceContainerLowest else colors.surfaceContainerHigh,
+            weekend = if (dark) colors.surfaceContainerHigh else colors.surfaceContainer,
+            today = colors.primary.copy(alpha = if (dark) 0.16f else 0.12f),
+            selection = colors.primary,
+        )
+    }
+}
+
+/** The fill of one day cell at [topLeft]: [fill], with the tint of today over it if [isToday]. */
+internal fun DrawScope.drawCell(
+    cells: CellColors,
+    fill: Color,
+    isToday: Boolean,
+    topLeft: Offset,
+    size: Size,
+) {
+    val gap = 1.dp.toPx()
+    val corner = CornerRadius(8.dp.toPx())
+    val inner = Offset(topLeft.x + gap, topLeft.y + gap)
+    val innerSize = Size(size.width - 2 * gap, size.height - 2 * gap)
+    drawRoundRect(fill, inner, innerSize, corner)
+    if (isToday) drawRoundRect(cells.today, inner, innerSize, corner)
+}
+
+/**
+ * A frame around the selected day, over the cells and their events. It redraws alone when the
+ * selection changes. [columns] is the number of cells in a row.
+ */
+@Composable
+internal fun SelectionLayer(index: Int, columns: Int, modifier: Modifier, rows: Int = 6) {
+    val color = rememberCellColors().selection
     Spacer(
         modifier =
             modifier.drawBehind {
                 if (index < 0) return@drawBehind
-                val cellWidth = size.width / 7
-                val cellHeight = size.height / 6
+                val cellWidth = size.width / columns
+                val cellHeight = size.height / rows
+                val stroke = 2.dp.toPx()
+                val inset = 1.dp.toPx() + stroke / 2
                 drawRoundRect(
                     color = color,
                     topLeft =
                         Offset(
-                            (index % 7) * cellWidth + 1.dp.toPx(),
-                            (index / 7) * cellHeight + 1.dp.toPx(),
+                            (index % columns) * cellWidth + inset,
+                            (index / columns) * cellHeight + inset,
                         ),
-                    size = Size(cellWidth - 2.dp.toPx(), cellHeight - 2.dp.toPx()),
+                    size = Size(cellWidth - 2 * inset, cellHeight - 2 * inset),
                     cornerRadius = CornerRadius(8.dp.toPx()),
+                    style = Stroke(stroke),
                 )
             }
     )
@@ -208,6 +265,7 @@ private fun MonthDrawing(
     modifier: Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
+    val cells = rememberCellColors()
     val painter = remember { GridTextPainter() }
     Spacer(
         modifier =
@@ -233,6 +291,13 @@ private fun MonthDrawing(
                         val top = (index / 7) * cellHeight
                         val center = left + cellWidth / 2
                         val isToday = date == today
+                        drawCell(
+                            cells = cells,
+                            fill = if (date.month == month.month) cells.day else cells.otherMonth,
+                            isToday = isToday,
+                            topLeft = Offset(left, top),
+                            size = Size(cellWidth, cellHeight),
+                        )
                         if (isToday) {
                             drawCircle(
                                 colors.primary,
@@ -273,7 +338,7 @@ private fun MonthDrawing(
                             val right =
                                 (segment.endColumn + 1) * cellWidth -
                                     if (segment.continuesAfter) 0f else inset
-                            val y = top + segment.lane * lineStep
+                            val y = top + segment.position * lineStep
                             val textX = left + if (spanning) inset * 2 else bar + inset
                             // The pattern tells the calendar, the color the category
                             drawEventBlock(
@@ -284,9 +349,10 @@ private fun MonthDrawing(
                                 corner = corner,
                                 tint = if (spanning) 0.55f else 0.18f,
                                 bar = if (spanning) 0f else bar,
-                                background = colors.background,
-                                clear =
-                                    painter.clearArea(
+                                // The cell shows through the patterns without a fill
+                                background = Color.Transparent,
+                                text =
+                                    painter.textArea(
                                         pattern = event.pattern,
                                         text = event.title,
                                         sizePx = lineSize,

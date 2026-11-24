@@ -64,6 +64,54 @@ class CalendarStoreTest {
     }
 
     @Test
+    fun `an event moves to another calendar with its UID`() = runBlocking {
+        val server = collection()
+        val local = store.createLocalCalendar("Personal")
+        store.applyRemote(
+            server,
+            listOf(
+                RemoteItem(
+                    "https://dav/u/cal/run.ics",
+                    "\"1\"",
+                    ics("run", "DTSTART:20261110T100000Z\nDTEND:20261110T110000Z\nSUMMARY:Run"),
+                )
+            ),
+        )
+        val event = dao.eventsOf(server).single()
+
+        // From the server to this device: the server copy waits for its deletion
+        val onDevice = store.moveEvent(event.id, local)
+        val moved = dao.event(onDevice)!!
+        assertEquals(local, moved.collectionId)
+        assertEquals("run", moved.uid)
+        assertFalse(moved.dirty)
+        assertTrue(dao.event(event.id)!!.deleted)
+        assertEquals(
+            listOf(onDevice),
+            dao.instancesFlow(0, Long.MAX_VALUE).first().map { it.eventId },
+        )
+
+        // And back: a new event to upload, and the copy on this device is gone
+        val back = store.moveEvent(onDevice, server)
+        val uploaded = dao.event(back)!!
+        assertEquals(server, uploaded.collectionId)
+        assertTrue(uploaded.dirty)
+        assertFalse(uploaded.existsOnServer)
+        assertTrue(uploaded.href.startsWith("https://dav/u/cal/"))
+        assertEquals(null, dao.event(onDevice))
+    }
+
+    @Test
+    fun `the chips keep the order of the user`() = runBlocking {
+        assertEquals(emptyMap(), store.chipOrderFlow().first())
+        store.setChipOrder(listOf(3L, CalendarStore.TASKS_CHIP_ID, 1L))
+        assertEquals(
+            mapOf(3L to 0, CalendarStore.TASKS_CHIP_ID to 1, 1L to 2),
+            store.chipOrderFlow().first(),
+        )
+    }
+
+    @Test
     fun `a category shows its calendars, renames in writable events, and exports`() = runBlocking {
         val writable = collection()
         val account = dao.accounts().single().id

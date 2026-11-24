@@ -38,7 +38,9 @@ class TaskColorStoreTest {
     private val repo = FakeTaskRepo()
     private val store = TaskColorStore(db, repo)
     private val red = TaskColorStore.PALETTE[1]
-    private val blue = TaskColorStore.PALETTE[0]
+    private val blue =
+        TaskColorStore.PALETTE[
+                com.shub39.grit.calendar.data.CategoryColors.palette.indexOf("royalblue")]
 
     @AfterTest
     fun close() {
